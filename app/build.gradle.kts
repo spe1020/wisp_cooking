@@ -19,8 +19,8 @@ android {
         applicationId = baseApplicationId
         minSdk = 26
         targetSdk = 35
-        versionCode = 74
-        versionName = "1.0.0"
+        versionCode = 77
+        versionName = "1.0.3"
         resValue("string", "app_name", "Wisp")
 
         ndk {
