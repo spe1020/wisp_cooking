@@ -50,6 +50,14 @@ class Relay(
             Thread(r, "relay-reconnect").apply { isDaemon = true }
         }
 
+        /** OkHttpClient.newWebSocket() can block on the shared TaskRunner lock for several
+         *  seconds under contention — running it on the main thread causes ANRs. Dispatch
+         *  connect() through this pool so callers (UI handlers, RelayPool.sendToRelayOrEphemeral)
+         *  never wait on it. Sized to allow a few parallel connects without unbounded thread growth. */
+        private val connectExecutor = Executors.newFixedThreadPool(4) { r ->
+            Thread(r, "relay-connect").apply { isDaemon = true }
+        }
+
         fun createClient(): OkHttpClient = HttpClientFactory.createRelayClient()
     }
 
@@ -79,6 +87,10 @@ class Relay(
     var onBytesSent: ((url: String, size: Int) -> Unit)? = null
 
     fun connect() {
+        connectExecutor.execute { connectBlocking() }
+    }
+
+    private fun connectBlocking() {
         synchronized(connectLock) {
             if (isConnected || webSocket != null) return
 
