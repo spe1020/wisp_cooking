@@ -53,6 +53,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -144,6 +145,15 @@ fun LiveStreamScreen(
     LaunchedEffect(messages.size) {
         if (messages.isNotEmpty()) {
             listState.animateScrollToItem(0)
+        }
+    }
+
+    val context = LocalContext.current
+    DisposableEffect(context) {
+        val window = context.findHostActivity()?.window
+        window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        onDispose {
+            window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         }
     }
 
@@ -1087,4 +1097,13 @@ private fun formatZapSats(sats: Long): String = when {
     sats >= 1_000_000 -> "${"%.1f".format(sats / 1_000_000.0)}M"
     sats >= 1_000 -> "${"%.1f".format(sats / 1_000.0)}k"
     else -> sats.toString()
+}
+
+private fun android.content.Context.findHostActivity(): android.app.Activity? {
+    var ctx: android.content.Context = this
+    while (ctx is android.content.ContextWrapper) {
+        if (ctx is android.app.Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
 }
