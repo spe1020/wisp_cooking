@@ -57,7 +57,7 @@
 
     <!-- Google Sign-In / Drive Backup -->
     <!-- Replace this empty string with your OAuth 2.0 Web Client ID from Google Cloud Console. -->
-    <string name="google_web_client_id" translatable="false">410412439051-mhcgeuvc2sjp75v8snucstfr5smrg03g.apps.googleusercontent.com</string>
+    <string name="google_web_client_id" translatable="false">410412439051-6h77f1666dtbgmo1o3r7fkk1egpf7a7p.apps.googleusercontent.com</string>
     <string name="google_auth_starting">Starting…</string>
     <string name="google_auth_signing_in">Signing in with Google…</string>
     <string name="google_auth_checking_drive">Checking your Google Drive backup…</string>
