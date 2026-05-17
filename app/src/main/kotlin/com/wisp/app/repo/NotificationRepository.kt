@@ -184,7 +184,9 @@ class NotificationRepository(
             val zapperPubkey = Nip57.getZapperPubkey(event)
             if (zapperPubkey != null && muteRepo?.isBlocked(zapperPubkey) == true) return
         }
-        if (safetyPrefs?.wotFilterEnabled?.value == true) {
+        // Private replies are explicit, gift-wrapped, and addressed to us — bypass WoT.
+        val isPrivateReply = eventRepo?.isPrivateReply(event.id) == true
+        if (!isPrivateReply && safetyPrefs?.wotFilterEnabled?.value == true) {
             val netRepo = extendedNetworkRepo
             if (netRepo != null && netRepo.isNetworkReady()) {
                 val pubkeyToCheck = if (event.kind == 9735) {
@@ -691,7 +693,9 @@ class NotificationRepository(
     }
 
     private fun mergeReply(event: NostrEvent, replyTarget: String, replyTargetHint: String?): Boolean {
-        if (safetyPrefs?.spamFilterEnabled?.value == true &&
+        val isPrivateReply = eventRepo?.isPrivateReply(event.id) == true
+        if (!isPrivateReply &&
+            safetyPrefs?.spamFilterEnabled?.value == true &&
             contactRepo?.isFollowing(event.pubkey) != true &&
             safetyPrefs?.isSpamSafelisted(event.pubkey) != true
         ) {
