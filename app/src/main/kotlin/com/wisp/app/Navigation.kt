@@ -93,6 +93,7 @@ import com.wisp.app.ui.component.FloatingVideoPlayer
 import com.wisp.app.ui.component.PipController
 import com.wisp.app.ui.component.FullScreenVideoPlayer
 import com.wisp.app.ui.component.FullScreenVideoState
+import com.wisp.app.ui.component.NsecPasteWarningOverlay
 import com.wisp.app.ui.screen.OnboardingSuggestionsScreen
 import com.wisp.app.ui.screen.OnboardingTopicsScreen
 import com.wisp.app.ui.screen.OnboardingFirstPostScreen
@@ -3405,6 +3406,7 @@ fun WispNavHost(
             .align(Alignment.BottomCenter)
             .padding(bottom = 16.dp)
     )
+    NsecPasteWarningOverlay()
     } // Box
 
     } // Scaffold

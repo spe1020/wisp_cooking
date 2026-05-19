@@ -134,6 +134,7 @@ import com.wisp.app.repo.BalanceUnit
 import com.wisp.app.repo.FiatPreferences
 import com.wisp.app.repo.WalletMode
 import com.wisp.app.repo.WalletTransaction
+import com.wisp.app.ui.component.NsecPasteGuard
 import com.wisp.app.ui.component.SatsNumpad
 import com.wisp.app.ui.util.AmountFormatter
 import com.wisp.app.viewmodel.AutoCheckState
@@ -603,7 +604,7 @@ private fun WalletConnectionContent(
 
     OutlinedTextField(
         value = connectionString,
-        onValueChange = onConnectionStringChange,
+        onValueChange = { new -> if (!NsecPasteGuard.blockIfNsec(connectionString, new)) onConnectionStringChange(new) },
         label = { Text(stringResource(R.string.wallet_nwc_connection_string)) },
         placeholder = { Text("nostr+walletconnect://...") },
         modifier = Modifier.fillMaxWidth(),
@@ -1139,7 +1140,7 @@ private fun SendInputContent(
 
         OutlinedTextField(
             value = input,
-            onValueChange = onInputChange,
+            onValueChange = { new -> if (!NsecPasteGuard.blockIfNsec(input, new)) onInputChange(new) },
             label = { Text(stringResource(R.string.wallet_lightning_address_invoice)) },
             placeholder = { Text(stringResource(R.string.placeholder_user_domain)) },
             modifier = Modifier.fillMaxWidth(),
@@ -1147,7 +1148,7 @@ private fun SendInputContent(
             maxLines = 4,
             trailingIcon = {
                 IconButton(onClick = {
-                    clipboardManager.getText()?.text?.let { onInputChange(it) }
+                    clipboardManager.getText()?.text?.let { new -> if (!NsecPasteGuard.blockIfNsec(input, new)) onInputChange(new) }
                 }) {
                     Icon(Icons.Default.ContentPaste, contentDescription = stringResource(R.string.wallet_paste))
                 }
@@ -2441,7 +2442,7 @@ private fun SparkSetupContent(
 
         OutlinedTextField(
             value = restoreMnemonic,
-            onValueChange = onRestoreMnemonicChange,
+            onValueChange = { new -> if (!NsecPasteGuard.blockIfNsec(restoreMnemonic, new)) onRestoreMnemonicChange(new) },
             label = { Text("Recovery phrase") },
             placeholder = { Text("Enter 12 or 24 words...") },
             modifier = Modifier.fillMaxWidth(),
@@ -3473,7 +3474,7 @@ private fun DeleteWalletConfirmContent(
 
             OutlinedTextField(
                 value = confirmText,
-                onValueChange = onConfirmTextChange,
+                onValueChange = { new -> if (!NsecPasteGuard.blockIfNsec(confirmText, new)) onConfirmTextChange(new) },
                 label = { Text("Type DELETE to confirm") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true

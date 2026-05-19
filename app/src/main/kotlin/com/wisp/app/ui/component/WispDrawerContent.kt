@@ -73,6 +73,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.wisp.app.nostr.Nip05
 import com.wisp.app.nostr.ProfileData
+import com.wisp.app.nostr.toNpub
 import com.wisp.app.repo.AccountInfo
 
 
@@ -197,7 +198,7 @@ fun WispDrawerContent(
                 )
             } else if (pubkey != null) {
                 Text(
-                    text = pubkey.take(16) + "...",
+                    text = pubkey.toNpub().let { it.take(16) + "..." },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -255,7 +256,7 @@ fun WispDrawerContent(
                         text = {
                             androidx.compose.material3.OutlinedTextField(
                                 value = statusText,
-                                onValueChange = { statusText = it },
+                                onValueChange = { new -> if (!com.wisp.app.ui.component.NsecPasteGuard.blockIfNsec(statusText, new)) statusText = new },
                                 label = { Text("What are you up to?") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
@@ -298,9 +299,9 @@ fun WispDrawerContent(
                             ProfilePicture(url = pictureUrl, size = 36)
                             Spacer(modifier = Modifier.width(12.dp))
                             val displayText = if (isActive) {
-                                profile?.displayString ?: account.displayName ?: account.pubkeyHex.take(16) + "..."
+                                profile?.displayString ?: account.displayName ?: account.pubkeyHex.toNpub().let { it.take(16) + "..." }
                             } else {
-                                account.displayName ?: account.pubkeyHex.take(16) + "..."
+                                account.displayName ?: account.pubkeyHex.toNpub().let { it.take(16) + "..." }
                             }
                             Text(
                                 text = displayText,
