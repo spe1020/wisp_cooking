@@ -214,6 +214,16 @@ class WalletViewModel(
     private val _lightningAddressError = MutableStateFlow<String?>(null)
     val lightningAddressError: StateFlow<String?> = _lightningAddressError
 
+    // NWC node info (alias + supported methods) — fetched once post-connect.
+    val nwcNodeAlias: StateFlow<String?> = nwcRepo.nodeAlias
+    val nwcSupportedMethods: StateFlow<List<String>> = nwcRepo.supportedMethods
+
+    // Spark identity pubkey — populated from the SDK's GetInfoResponse.
+    val sparkIdentityPubkey: StateFlow<String?> = sparkRepo.identityPubkey
+
+    // NWC connection metadata for the Wallet Info expandable in settings.
+    val nwcConnectionInfo: StateFlow<NwcRepository.ConnectionInfo?> = nwcRepo.connectionInfo
+
     // Delete wallet confirmation
     private val _deleteConfirmText = MutableStateFlow("")
     val deleteConfirmText: StateFlow<String> = _deleteConfirmText
@@ -698,6 +708,13 @@ class WalletViewModel(
                             _walletState.value = WalletState.Error(e.message ?: "Failed to fetch balance")
                         }
                     )
+                    // Fetch NWC node info (alias / methods) so the dashboard top
+                    // bar and Wallet Info expandable can render it. Spark exposes
+                    // its identity via getInfo() on the SDK side; no extra fetch
+                    // needed there.
+                    if (provider === nwcRepo) {
+                        launch { nwcRepo.fetchNodeInfo() }
+                    }
                 }
             }
         }
