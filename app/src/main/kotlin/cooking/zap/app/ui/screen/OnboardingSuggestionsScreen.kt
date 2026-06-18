@@ -178,7 +178,7 @@ private fun CreatorCards(
 ) {
     val creatorDescriptions = mapOf(
         "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d" to "Creator of Nostr",
-        "e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb" to "Creator of Wisp"
+        "319ad3e790634dbe86f14db9c2995b26ee3c6228be55f89c4c7fea9acc01d50a" to "Zap Cooking"
     )
 
     Row(

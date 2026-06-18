@@ -98,7 +98,7 @@ class OnboardingViewModel(app: Application) : AndroidViewModel(app) {
         private const val WISP_RELAY_URL = "wss://relay.wisp.talk"
         val CREATOR_PUBKEYS = listOf(
             "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d", // fiatjaf
-            "e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb"  // utxo
+            "319ad3e790634dbe86f14db9c2995b26ee3c6228be55f89c4c7fea9acc01d50a"  // Zap Cooking
         )
         private val ACTIVE_RELAYS = listOf("wss://premium.primal.net", "wss://nostr.wine", "wss://relay.wisp.talk", "wss://pyramid.fiatjaf.com")
         private const val NEWS_RELAY = "wss://news.utxo.one"

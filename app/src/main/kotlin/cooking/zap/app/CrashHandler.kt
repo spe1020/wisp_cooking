@@ -13,7 +13,8 @@ import java.util.Locale
 
 object CrashHandler {
 
-    const val DEVELOPER_PUBKEY = "e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb"
+    // Zap Cooking account — crash reports are sent here.
+    const val DEVELOPER_PUBKEY = "319ad3e790634dbe86f14db9c2995b26ee3c6228be55f89c4c7fea9acc01d50a"
     private const val CRASH_LOG_FILE = "crash_log.txt"
 
     private var defaultHandler: Thread.UncaughtExceptionHandler? = null
