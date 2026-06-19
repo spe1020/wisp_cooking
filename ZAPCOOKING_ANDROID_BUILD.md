@@ -320,10 +320,129 @@ product:
 Deferred because it's product-curation + copy, not feed plumbing; Phase 1
 ships the feeds it depends on.
 
-### Phase 2 — Recipe import + Cheffy
-Native camera + share-target import → `extract-recipe`. Cheffy chat
-screen → `zappy` (chat/hungry/scan). [Confirm: Cheffy chat in v1 or
-fast-follow — pending decision.]
+### Phase 2 — AI features (investigated; map below)
+Mirror the web app, function AND branding. All four are **server-side**: the
+app calls `zap.cooking` HTTPS endpoints; it never embeds model keys. Android
+work = API client + UI + branding + (for Sous Chef "save") a recipe-create
+pipeline.
+
+⚠️ **ARCHITECTURAL DRIFT from the kickoff assumption:** the four AI endpoints
+do **NOT** use NIP-98. They take **`pubkey` in the JSON body** and the server
+calls `hasActiveMembership(pubkey)` (an insecure, client-supplied trust model
+the web acknowledges — there's a planned `FOLLOWUPS-auth-migration` to NIP-98).
+So Android needs a **plain `postJson`** helper (no NIP-98 signing) — NOT
+`authedPost`. `getJson` (GET) + new `postJson` cover all four. NIP-98 stays
+for `membership/check-status` only. When the server migrates, swap to NIP-98.
+
+**Contracts (verified against `zapcooking/frontend`):**
+
+1. **Sous Chef** — `POST /api/extract-recipe` (+ `/public`).
+   Body `{ type:'url'|'image'|'text', url?|imageData?(base64)|textData?, pubkey? }`
+   → `{ success, recipe: NormalizedRecipe }`. `/public` = `{ url }` only, no
+   auth. **Gating: URL is FREE for everyone** (per-IP 8/hr·30/day);
+   **image/text require active membership** (pubkey in body). Response is
+   **structured fields, not markdown**: `NormalizedRecipe = { title, summary,
+   chefsnotes, preptime, cooktime, servings, ingredients[], directions[],
+   tags[], imageUrls[] }`. Web UX: landing hero POSTs `/public`, stashes the
+   recipe in sessionStorage, navigates to `/souschef` editor → **view-only
+   preview until sign-in**, then save.
+
+2. **Cheffy** — `POST /api/zappy` (brand is "Cheffy"; endpoint stays `/zappy`
+   for back-compat — confirmed) + `/api/zappy/scan`.
+   Body `{ prompt, mode?:'prompt'|'chat'|'hungry'|'format', pubkey?, messages?:
+   {role,content}[] }` → `{ ok, output }`. Scan: `{ image:(base64), pubkey? }`.
+   **Member-gated** (Pro Kitchen) when `MEMBERSHIP_ENABLED`; fail-open on the
+   membership-API outage for a pubkey-bearing caller. Output is markdown;
+   when the user wants a recipe it emits the EXACT `# Title / ## Details(emoji)
+   / ## Ingredients / ## Directions / ## Chef's notes` format `RecipeParser`
+   reads. Branding is heaviest: bespoke `CheffyIcon` (expression states) +
+   `CheffyAvatar` character, "kitchen companion", Lightning-native (own LN
+   address), starter prompts, "show Cheffy your fridge" scan.
+
+3. **Nourish** — **BOTH relay-read AND endpoint-compute** (the critical
+   question, answered): the web resolver reads a 4-layer chain ending at the
+   **pantry relay** (`wss://pantry.zap.cooking`, already `MEMBERS_RELAY`):
+   **kind 30078**, author = a fixed `NOURISH_SERVICE_PUBKEY`, filter `#d` =
+   recipe key; content is JSON scores. The resolver **never computes** — a
+   `miss` means the member-gated `POST /api/nourish` computes AND the server
+   **publishes the score back to pantry** for future reads. Compute body
+   `{ pubkey, eventId, title, ingredients[], tags[], servings, recipePubkey?,
+   recipeDTag?, contentHash? }` → `{ success, scores, improvements[],
+   ingredient_signals[], promptVersion, createdAt }`, **member-gated
+   fail-closed**. Scores = **8 dimensions** (gut, protein, realFood,
+   antiInflammatory, bloodSugar, immuneSupportive, brainHealth, heartHealth)
+   + weighted overall. `CACHE_VERSION 2.0`, `PROMPT_VERSION 3`. Plus a
+   flag/report-a-score path (`flagSubmit`).
+
+4. **Cookbook intro** — `POST /api/cookbook-intro`. Body `{ pubkey, packTitle,
+   packDescription?, creatorName?, recipeCount, recipeTitles? }` →
+   `{ success, introduction }`. Member-gated. Smallest endpoint, but **depends
+   on a Recipe Packs / cookbook commerce feature that does NOT exist on
+   Android** → can't ship standalone; deferred until cookbooks exist.
+
+**Android infra EXISTS vs NET-NEW** (audit): EXISTS — `api/ZapCookingApi`
+(`getJson`; `authedPost` is NIP-98, not used by these; **add `postJson`**),
+`NostrEvent.create`/signing (kind-agnostic), `RelayPool.sendToWriteRelays`
+(publish), `BlossomRepository.uploadMedia` (image upload, Blossom auth),
+`ComposeViewModel` media pipeline, `RecipeParser` (read), membership read
+(`getPublicMembership`/`checkMembershipStatus`). NET-NEW — **`RecipeSerializer`**
+(inverse of `RecipeParser`: structured → `##`-section markdown + 30023 tags),
+**kind-30023 publish path** (none today; only kind-1/68/71), a recipe-create
+VM/screen, **Chrome Custom Tabs** (`androidx.browser`, absent) for the
+membership link-out, `MembershipRepository` (Phase 3).
+
+**Proposed breakdown + build order (one concern each):**
+- **2.0** API plumbing — `postJson` + request/response models. Tiny; underpins all.
+- **2.1** Sous Chef — URL import → **structured preview only** (read-only),
+  reusing `ZapCookingApi`. Free/unauthed URL path. **No posting.** (See decision.)
+- **2.2** Recipe-create pipeline — `RecipeSerializer` (2.2a, pure+tested) →
+  kind-30023 publish + image upload reuse (2.2b) → wire Sous Chef preview to
+  **Save** (2.2c, needs a signing key). The create pipeline you need anyway.
+- **2.3** Cheffy chat — member-gated chat screen → `/api/zappy` (chat/hungry);
+  scan (vision) as 2.3b. Heaviest branding (port `CheffyIcon`/`CheffyAvatar`).
+  Recipe-format output can deep-link into 2.2 create.
+- **2.4** Nourish (sub-phased): **2.4a READ** — query pantry for the kind-30078
+  score, render 8 dimensions on RecipeDetail (no membership to read); **2.4b
+  COMPUTE** — member-gated `/api/nourish` on miss; **2.4c flag** a score.
+- **2.5** Cookbook intro — **DEFERRED** (blocked on a Recipe Packs feature
+  not in scope).
+
+**Recommended order & dependencies:** 2.0 → **2.1** (fastest demoable, free
+URL path, preview-only) → **2.2** (enables Save; serializer is the create
+pipeline) → **2.4a** (high-value, read-only, no membership) → **2.3** (member-
+gated, big branding) → **2.4b/c** → 2.5 deferred. Cross-cutting: Phase 2
+features gate on membership, but the endpoints enforce it server-side — Android
+can be optimistic (send pubkey, **handle 403 gracefully** with a "membership
+required" + link-out), so the full `MembershipRepository`/Custom-Tab is Phase 3;
+a minimal status read can be pulled forward only if UI pre-gating is wanted.
+
+**Sous Chef v1 decision (Part B): import → structured preview ONLY; posting
+deferred to 2.2.** Mirrors the web's anon path (preview until sign-in); the
+free URL endpoint makes it the fastest working feature reusing only
+`ZapCookingApi`; decouples the small AI-import client from the bigger create
+pipeline (serializer + upload + publish, all net-new); and the preview is
+exactly what 2.2 "Save" consumes (clean prerequisite, not throwaway). The
+imported `NormalizedRecipe` preview can reuse `RecipeDetailScreen`'s rendering.
+Branding note: the bespoke icons (`CheffyIcon`, Sous Chef / Nourish marks) are
+SVG components — port them per-feature during each build, against the live site.
+
+**Phase 2 tracked follow-ups (don't lose these):**
+- **NIP-98 auth-migration parity.** The AI endpoints trust a client-supplied
+  `pubkey` (no signature). The web has a planned `FOLLOWUPS-auth-migration`
+  to NIP-98. When the server moves, Android swaps `postJson(pubkey-in-body)`
+  → `authedPost` (the NIP-98 spine already exists for `check-status`). Keep
+  the request models auth-agnostic so this is a one-call swap per endpoint.
+- **NIP-101n — consider later** (per Seth; tracked, not scoped). Evaluate
+  its relevance when the auth-migration item above is picked up; out of scope
+  for the current Phase 2 build order. Specifics TBD.
+- **Build-order soft call** (revisit after 2.1): do **2.4a Nourish READ before
+  2.2 create-pipeline** — it's ungated, relay-read-only (pantry, already
+  connected), and puts health scores on every recipe (higher broad value,
+  lower complexity than the net-new create pipeline). Both orders are fine.
+- **Membership pre-gating** (when the first GATED feature lands — Cheffy /
+  Nourish-compute): if optimistic try-then-403 feels rough, pull the cheap
+  public read (`GET /api/membership?pubkey=`, already in `ZapCookingApi`)
+  forward to pre-gate the UI. Optimistic stays the default (server enforces).
 
 ### Phase 3 — Membership + premium
 `MembershipRepository` (public GET status + cache); flavor-gated
