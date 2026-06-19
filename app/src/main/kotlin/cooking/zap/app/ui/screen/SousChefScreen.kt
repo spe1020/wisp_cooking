@@ -96,7 +96,8 @@ fun SousChefScreen(
                         imeAction = ImeAction.Go,
                     ),
                     keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                        onGo = { onImport(url) },
+                        // Same guard as the Import button — no duplicate/while-loading imports.
+                        onGo = { if (url.isNotBlank() && state != State.Loading) onImport(url) },
                     ),
                     trailingIcon = {
                         IconButton(onClick = { clipboard.getText()?.text?.let { url = it } }) {

@@ -49,6 +49,8 @@ class SousChefViewModel : ViewModel() {
                         else -> "Import failed (${e.code})."
                     }
                 )
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e // never swallow cancellation (e.g. leaving the screen)
             } catch (e: Exception) {
                 State.Error("Network error — check your connection and try again.")
             }

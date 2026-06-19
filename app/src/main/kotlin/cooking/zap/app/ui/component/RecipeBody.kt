@@ -86,6 +86,9 @@ fun LazyListScope.recipeBody(
                     recipe.hashtags.forEach { tag ->
                         SuggestionChip(
                             onClick = { onHashtagClick?.invoke(tag) },
+                            // No handler (e.g. the import preview) → non-interactive,
+                            // so a11y doesn't announce a clickable control that no-ops.
+                            enabled = onHashtagClick != null,
                             label = { Text(tag) },
                             modifier = Modifier.padding(end = 6.dp),
                         )
