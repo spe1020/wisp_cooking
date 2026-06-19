@@ -1,10 +1,14 @@
 package cooking.zap.app.ui.screen
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.CircularProgressIndicator
@@ -14,11 +18,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
@@ -28,38 +37,48 @@ import cooking.zap.app.nostr.NostrEvent
 import cooking.zap.app.repo.EventRepository
 import cooking.zap.app.ui.component.NoteActions
 import cooking.zap.app.ui.component.PostCard
-import cooking.zap.app.ui.component.RecipeCard
-import cooking.zap.app.viewmodel.FoodstrFeedViewModel
-import cooking.zap.app.viewmodel.FoodstrFeedViewModel.FoodstrItem
+import cooking.zap.app.viewmodel.OnlyFoodFeedViewModel
+import cooking.zap.app.viewmodel.OnlyFoodFeedViewModel.Mode
 
 /**
- * Home foodstr feed — recipes (as [RecipeCard]) and `#foodstr` notes (as the
- * shared [PostCard]) merged into one time-sorted list (concern 1.5). Recipe
- * taps open the recipe-detail route; notes keep full inline engagement via
- * [NoteActions]. Reachable from the home drawer; the post-login default swap
- * is a deferred follow-up.
+ * OnlyFood 🍳 — the social food feed (concern 1.6). A Global/Following toggle
+ * over the expanded food-hashtag set; notes render via the shared [PostCard]
+ * with full inline engagement; infinite scroll pages older windows.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FoodstrFeedScreen(
-    viewModel: FoodstrFeedViewModel,
+fun OnlyFoodFeedScreen(
+    viewModel: OnlyFoodFeedViewModel,
     eventRepo: EventRepository,
     userPubkey: String?,
     noteActions: NoteActions,
-    onRecipeClick: (author: String, dTag: String) -> Unit,
-    onProfileClick: (String) -> Unit,
     onBack: () -> Unit,
     zapAnimatingIds: Set<String> = emptySet(),
     zapInProgressIds: Set<String> = emptySet(),
 ) {
-    val items by viewModel.items.collectAsState()
+    val notes by viewModel.notes.collectAsState()
+    val mode by viewModel.mode.collectAsState()
     val isLoading by viewModel.isLoading.collectAsState()
+    val isPaging by viewModel.isPaging.collectAsState()
+    val emptyFollows by viewModel.emptyFollows.collectAsState()
+
+    val listState = rememberLazyListState()
+    // Infinite scroll: when the last item nears the viewport, page older.
+    val shouldPage by remember {
+        derivedStateOf {
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
+            notes.isNotEmpty() && last >= notes.size - 3
+        }
+    }
+    LaunchedEffect(shouldPage) {
+        if (shouldPage) viewModel.loadMore()
+    }
 
     Scaffold(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text("Foodstr") },
+                title = { Text("OnlyFood 🍳") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -71,47 +90,49 @@ fun FoodstrFeedScreen(
             )
         },
     ) { padding ->
-        when {
-            items.isEmpty() && isLoading -> {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
-                }
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            SingleChoiceSegmentedButtonRow(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            ) {
+                SegmentedButton(
+                    selected = mode == Mode.GLOBAL,
+                    onClick = { viewModel.setMode(Mode.GLOBAL) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                ) { Text("Global") }
+                SegmentedButton(
+                    selected = mode == Mode.FOLLOWING,
+                    onClick = { viewModel.setMode(Mode.FOLLOWING) },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                ) { Text("Following") }
             }
-            items.isEmpty() -> {
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Text(
-                        text = "No recipes or #foodstr posts yet",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            else -> {
-                LazyColumn(Modifier.fillMaxSize().padding(padding)) {
-                    items(items.size, key = { items[it].key }) { index ->
-                        when (val item = items[index]) {
-                            is FoodstrItem.Recipe -> {
-                                val recipe = item.recipe
-                                val profile = remember(recipe.author) { eventRepo.getProfileData(recipe.author) }
-                                RecipeCard(
-                                    recipe = recipe,
-                                    authorName = profile?.displayString,
-                                    authorPicture = profile?.picture,
-                                    onClick = { onRecipeClick(recipe.author, recipe.dTag) },
-                                    onProfileClick = { onProfileClick(recipe.author) },
-                                )
-                                HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-                            }
-                            is FoodstrItem.Note -> {
-                                FoodstrNote(
-                                    event = item.event,
-                                    eventRepo = eventRepo,
-                                    userPubkey = userPubkey,
-                                    noteActions = noteActions,
-                                    zapAnimatingIds = zapAnimatingIds,
-                                    zapInProgressIds = zapInProgressIds,
-                                )
-                            }
+
+            when {
+                emptyFollows -> CenteredMessage(
+                    "Follow some food people to see their posts here.",
+                )
+                notes.isEmpty() && isLoading -> Box(
+                    Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
+                notes.isEmpty() -> CenteredMessage("No food posts in this window yet.")
+                else -> LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+                    items(notes.size, key = { notes[it].id }) { index ->
+                        OnlyFoodNote(
+                            event = notes[index],
+                            eventRepo = eventRepo,
+                            userPubkey = userPubkey,
+                            noteActions = noteActions,
+                            zapAnimatingIds = zapAnimatingIds,
+                            zapInProgressIds = zapInProgressIds,
+                        )
+                        HorizontalDivider()
+                    }
+                    if (isPaging) {
+                        item(key = "paging") {
+                            Box(
+                                Modifier.fillMaxWidth().padding(16.dp),
+                                contentAlignment = Alignment.Center,
+                            ) { CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) }
                         }
                     }
                 }
@@ -121,7 +142,18 @@ fun FoodstrFeedScreen(
 }
 
 @Composable
-private fun FoodstrNote(
+private fun CenteredMessage(text: String) {
+    Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun OnlyFoodNote(
     event: NostrEvent,
     eventRepo: EventRepository,
     userPubkey: String?,

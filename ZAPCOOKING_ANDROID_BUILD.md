@@ -237,6 +237,28 @@ Sub-concern breakdown (one PR each, off main, no stacking):
   asymmetry: notes zap inline, recipe cards zap one tap into detail.
   `FeedSubscriptionManager`/`FeedViewModel` core untouched. Suite 57/0/0/0,
   `assembleZapstoreDebug` clean.
+  NOTE: 1.6 un-merged the notes out of this screen — see below.
+- **1.6** ✅ OnlyFood 🍳 social feed + Recipes un-merge/rename. **Un-merge:**
+  `FoodstrFeed*`/`Routes.FOODSTR` renamed → `RecipeFeed*`/`Routes.RECIPES`
+  (`"recipes"`) and gutted to recipe cards ONLY (dropped the `#foodstr` note
+  sub + `mergeFoodstrItems` + the merge test) — so a post never shows in two
+  feeds. **OnlyFood (new, additive):** `nostr/FoodHashtags.kt` (the expanded
+  ~85-tag set from web `FoodstrFeedOptimized.svelte`, deduped + unit-tested);
+  `OnlyFoodFeedViewModel` — kind-1 feed with **GLOBAL/FOLLOWING** modes (v1;
+  members + replies deferred). Global = all matching notes (search relay);
+  Following = server-side `authors` filter from the kind-3 contact list,
+  chunked at 500/REQ (distinct subIds under one prefix, since a same-subId
+  REQ replaces). Filtering mirrors the app: drop on mute (blocked author /
+  muted word) **and** NSpam score `>= 0.7` (fail-open if classifier not
+  loaded). Web-style time-window pagination (global 7d / following 3d; older
+  windows via `until = oldest-1` on infinite scroll). `OnlyFoodFeedScreen` =
+  Global|Following segmented toggle + shared `PostCard` (full inline
+  `NoteActions`/zap) + infinite scroll. Reachable via an "OnlyFood" drawer
+  entry. Additive: general/Following feed + `FeedViewModel`/nav structure
+  untouched. Keyword relevance scorer skipped (v1 = hashtag set only;
+  `#beef`/`#steak` ambiguity caught by NSpam+mutes). Forward note: outbox
+  routing is the following-mode completeness upgrade if the search relay is
+  sparse. Suite 58/0/0/0, `assembleZapstoreDebug` clean.
 
 ### Phase 1.5 — Onboarding foodstr cleanup (DEFERRED)
 Tracked here so it isn't lost; **do not start until Phase 1 lands.** Closes
