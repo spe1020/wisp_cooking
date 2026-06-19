@@ -64,7 +64,6 @@ class OnlyFoodFeedViewModel : ViewModel() {
     private val seen = LinkedHashMap<String, NostrEvent>()
     private var deps: Deps? = null
     private var activeJob: Job? = null
-    private var subCounter = 0
     private var endReached = false
 
     private class Deps(
@@ -127,7 +126,13 @@ class OnlyFoodFeedViewModel : ViewModel() {
         }
 
         if (initial) _isLoading.value = true else _isPaging.value = true
-        val base = "onlyfood-${subCounter++}"
+        // Process-wide unique subId. A VM-instance counter starting at 0
+        // collided ("onlyfood-0") across nav back-stack entries: re-entering
+        // the screen within the prior instance's ~14s teardown let its
+        // closeAll send CLOSE "onlyfood-0" and kill the new sub on the shared
+        // ephemeral search-relay connection. A global sequence makes the old
+        // instance's CLOSE target its own ids, never the new sub.
+        val base = "onlyfood-${SUB_SEQ.incrementAndGet()}"
         var received = 0
 
         activeJob = viewModelScope.launch {
@@ -208,6 +213,8 @@ class OnlyFoodFeedViewModel : ViewModel() {
     }
 
     companion object {
+        /** Process-wide subId sequence — unique across all VM instances. */
+        private val SUB_SEQ = java.util.concurrent.atomic.AtomicLong(0)
         private const val THREE_DAYS = 3L * 24 * 60 * 60
         private const val SEVEN_DAYS = 7L * 24 * 60 * 60
         private const val AUTHOR_CHUNK = 500

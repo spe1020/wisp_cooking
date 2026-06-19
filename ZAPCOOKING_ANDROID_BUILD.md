@@ -264,6 +264,12 @@ Sub-concern breakdown (one PR each, off main, no stacking):
   can't cancel the collector) + the `>= 0.7` threshold verified against real
   food posts first; and audit existing `score()`-inside-`collect{}` sites
   (e.g. notifications) for the same stream-cancellation latent bug.
+  RELOAD FIX: subIds are process-wide unique (companion `AtomicLong SUB_SEQ`,
+  not an instance counter) — an instance counter restarted at 0 per nav
+  back-stack entry, so re-entering within the prior instance's ~14s teardown
+  let its `closeAll` CLOSE `onlyfood-0` and kill the new sub on the shared
+  ephemeral relay. TRACKED: `HashtagFeedViewModel.loadCounter` is the same
+  instance-scoped pattern (no rapid re-entry there, so left as-is).
   `OnlyFoodFeedScreen` =
   Global|Following segmented toggle + shared `PostCard` (full inline
   `NoteActions`/zap) + infinite scroll. Reachable via an "OnlyFood" drawer
