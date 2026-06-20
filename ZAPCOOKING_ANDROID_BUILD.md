@@ -492,7 +492,7 @@ membership link-out, `MembershipRepository` (Phase 3).
   (`PROMPT_PLACEHOLDERS`/`THINKING`/`COOKING`/`ERROR` pools + `pickLine` +
   `looksLikeStructuredRecipe`, verbatim from the web, unit-tested). Drawer entry
   "Cheffy" with the icon. Endpoint stays `/api/zappy`. Suite 98/0/0/0.
-  **2.3b** = scan (fridge vision, `/api/zappy/scan`, base64 image).
+  - **2.3b** = scan (fridge vision, `/api/zappy/scan`, base64 image).
 - **2.3c** ✅ Cheffy Save (the hungry-mode fast-follow — one PR, SAVE only).
   A structured Cheffy reply (`looksLikeStructuredRecipe`) gains a **"Save to my
   recipes"** button that routes through the existing write spine — no new
@@ -514,8 +514,9 @@ membership link-out, `MembershipRepository` (Phase 3).
   FAB-launched empty compose. READ_ONLY: Cheffy chat has no composer for them,
   so no Save affordance; compose re-gates on `canSign`. `prefillFromMarkdown`
   idempotent. Share + zap-to-Cheffy stay deferred. Suite 101/0/0/0.
-  **2.3d** (was 2.3c-extras) = Share action + character/avatar mascot. Deferred:
-  `format` mode (create-page tool), zap-to-Cheffy (LN `ZapCooking@getalby.com`).
+  - **2.3d** (was 2.3c-extras) = Share action + character/avatar mascot.
+    Deferred: `format` mode (create-page tool), zap-to-Cheffy
+    (LN `ZapCooking@getalby.com`).
 - **2.4** Nourish (sub-phased): **2.4a READ** ✅ — `nostr/NourishParser` (pure;
   kind-30078 JSON → `NourishScore`, **trusts the stored `overall`**, legacy
   dims default 0; 6 unit tests on a synthetic spec-accurate fixture — real

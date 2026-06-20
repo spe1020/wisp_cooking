@@ -162,6 +162,11 @@ class RecipeComposeViewModel : ViewModel() {
         if (prefilled) return
         prefilled = true
 
+        // Reset to a clean slate FIRST so the seeded state is deterministic and
+        // the empty-fields contract (images/categories/summary) holds regardless
+        // of any prior edits or a render-before-LaunchedEffect race.
+        resetForm()
+
         val title = TITLE_HEADING.find(markdown)?.groupValues?.get(1)?.trim()?.ifBlank { null } ?: "Untitled"
         val parsed = RecipeParser.parseContent(markdown)
         val parseLooksGood = parsed.ingredients.isNotEmpty() && parsed.directions.isNotEmpty()
@@ -176,12 +181,29 @@ class RecipeComposeViewModel : ViewModel() {
             _directions.value = parsed.directions.map { Row(nextId(), it) }
             _additionalResources.value = parsed.additionalMarkdown.orEmpty()
         } else {
-            // Salvage the raw text so nothing is lost; rows stay empty (single
-            // blank row each) so publish remains gated until the user fixes it.
+            // Salvage the raw text so nothing is lost; rows stay the reset single
+            // blank row so publish remains gated until the user fixes it.
             _additionalResources.value = markdown.trim()
             _prefillNotice.value = "Couldn't parse that recipe cleanly — review the raw text in Additional Resources."
         }
-        // images / categories / summary intentionally left empty (web parity).
+        // images / categories / summary intentionally left empty (web parity) —
+        // resetForm() above guarantees it.
+    }
+
+    /** Empty every form field — the explicit clean slate [prefillFromMarkdown] seeds onto. */
+    private fun resetForm() {
+        _title.value = ""
+        _summary.value = ""
+        _chefNotes.value = ""
+        _prepTime.value = ""
+        _cookTime.value = ""
+        _servings.value = ""
+        _additionalResources.value = ""
+        _categories.value = emptyList()
+        _ingredients.value = listOf(Row(nextId(), ""))
+        _directions.value = listOf(Row(nextId(), ""))
+        _images.value = emptyList()
+        _prefillNotice.value = null
     }
 
     // --- images ---
