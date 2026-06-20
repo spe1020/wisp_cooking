@@ -14,8 +14,10 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 
 /**
- * Publishes a recipe as a signed kind-30023 event (concern 2.2) — the shared
- * create spine (Sous Chef "Save" today; the manual recipe-create modal later).
+ * Publishes a recipe as a signed event in the primary [RecipeFormat]
+ * ([RecipeFormats.primary] — NIP-23 `kind 30023` today; the seam lets a future
+ * format become primary without touching this class) — the shared create spine
+ * (Sous Chef "Save" today; the manual recipe-create modal later).
  *
  * Mirrors the web create flow: serialize via the primary [RecipeFormat]
  * ([RecipeFormats.primary] — NIP-23 today), **re-host the

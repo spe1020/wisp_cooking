@@ -102,8 +102,10 @@ class RecipeComposeViewModel : ViewModel() {
         val v = raw.trim()
         if (v.isEmpty()) return
         // De-dupe on the slugged form so "Italian" and "italian" don't both add.
-        val slug = RecipeFormats.primary.slug(v.lowercase())
-        if (_categories.value.any { RecipeFormats.primary.slug(it.lowercase()) == slug }) return
+        // slug() already lowercases with Locale.ROOT (web parity) — don't pre-
+        // lowercase with the device locale (Turkish-i footgun).
+        val slug = RecipeFormats.primary.slug(v)
+        if (_categories.value.any { RecipeFormats.primary.slug(it) == slug }) return
         _categories.update { it + v }
     }
 
