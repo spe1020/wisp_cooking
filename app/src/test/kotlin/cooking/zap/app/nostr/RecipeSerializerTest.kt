@@ -12,10 +12,10 @@ import org.junit.Test
  */
 class RecipeSerializerTest {
 
-    private fun tuscan(): RecipeParser.Recipe {
-        val json = javaClass.getResource("/recipes/tuscan_peposo.json")!!.readText()
-        return RecipeParser.parse(NostrEvent.fromJson(json))
-    }
+    private fun tuscanEvent(): NostrEvent =
+        NostrEvent.fromJson(javaClass.getResource("/recipes/tuscan_peposo.json")!!.readText())
+
+    private fun tuscan(): RecipeParser.Recipe = RecipeParser.parse(tuscanEvent())
 
     /** Build a synthetic 30023 event from serialized content+tags, then parse it. */
     private fun roundTrip(recipe: RecipeParser.Recipe): RecipeParser.Recipe {
@@ -67,6 +67,31 @@ class RecipeSerializerTest {
         val again = roundTrip(original)
         // Same set of #t tags (root + per-recipe slug + categories).
         assertEquals(original.hashtags.toSet(), again.hashtags.toSet())
+    }
+
+    @Test
+    fun serializedContent_isByteIdenticalToWebAuthoredEvent() {
+        // The frozen Tuscan event was authored by the web's createMarkdown.
+        // Our serializer mirrors it, so re-serializing the parsed recipe must
+        // reproduce the original content byte-for-byte (the real "byte-for-byte
+        // web parity" gate, beyond the lenient semantic round-trip above).
+        val event = tuscanEvent()
+        assertEquals(event.content, RecipeSerializer.toContent(RecipeParser.parse(event)))
+    }
+
+    @Test
+    fun serializedTags_matchWebAuthoredEvent_exceptClientTag() {
+        val event = tuscanEvent()
+        val recipe = RecipeParser.parse(event)
+        val produced = RecipeSerializer.toTags(
+            title = recipe.title!!,
+            summary = recipe.summary,
+            imageUrls = listOfNotNull(recipe.image),
+            categories = recipe.categories,
+        ).toSet()
+        // Web event carries a `client` tag the serializer omits (added at publish).
+        val expected = event.tags.filter { it.firstOrNull() != "client" }.toSet()
+        assertEquals(expected, produced)
     }
 
     @Test

@@ -51,39 +51,82 @@ class RecipePublisher(
         val sourceImage = recipe.image?.takeIf { it.isNotBlank() }
             ?: return@withContext Result.Error("Add an image to publish this recipe.")
 
-        val imageUrl = reHost(sourceImage, signer) ?: sourceImage
-        val content = RecipeSerializer.toContent(recipe)
-        val tags = RecipeSerializer.toTags(title, recipe.summary, listOf(imageUrl), categories)
-            .toMutableList()
-        if (includeClientTag) tags.add(listOf("client", "Zap Cooking"))
+        // Signing/publish can throw — convert to Result.Error (never leave the
+        // caller stuck in "Saving"); still propagate cancellation.
+        try {
+            val imageUrl = reHost(sourceImage, signer) ?: sourceImage
+            val content = RecipeSerializer.toContent(recipe)
+            val tags = RecipeSerializer.toTags(title, recipe.summary, listOf(imageUrl), categories)
+                .toMutableList()
+            if (includeClientTag) tags.add(listOf("client", "Zap Cooking"))
 
-        val event = signer.signEvent(RecipeParser.RECIPE_KIND, content, tags)
-        // Cache first so the detail screen renders optimistically (no relay round-trip).
-        eventRepo.cacheEvent(event)
+            val event = signer.signEvent(RecipeParser.RECIPE_KIND, content, tags)
+            // Cache first so the detail screen renders optimistically (no relay round-trip).
+            eventRepo.cacheEvent(event)
 
-        val msg = ClientMessage.event(event)
-        relayPool.sendToWriteRelays(msg)
-        // Also broadcast to the article relays the Recipes feed reads.
-        for (url in RelayConfig.ARTICLES_RELAYS) relayPool.sendToRelayOrEphemeral(url, msg)
+            val msg = ClientMessage.event(event)
+            relayPool.sendToWriteRelays(msg)
+            // Also broadcast to the article relays the Recipes feed reads.
+            for (url in RelayConfig.ARTICLES_RELAYS) relayPool.sendToRelayOrEphemeral(url, msg)
 
-        Result.Published(author = signer.pubkeyHex, dTag = RecipeSerializer.slug(title))
+            Result.Published(author = signer.pubkeyHex, dTag = RecipeSerializer.slug(title))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Result.Error("Couldn't publish this recipe — ${e.message ?: "please try again"}.")
+        }
     }
 
-    /** Fetch the remote image and re-upload to Blossom; null on any failure (→ caller falls back). */
+    /**
+     * Fetch the remote image and re-upload to Blossom; null on any failure (→
+     * caller falls back to the source URL). Bounded: a tight call timeout and a
+     * [MAX_IMAGE_BYTES] cap (oversize/unknown-length-overrun → fallback) so
+     * "Save never blocks on re-host" holds even for a huge/slow image.
+     */
     private suspend fun reHost(url: String, signer: NostrSigner): String? = try {
-        httpClient.newCall(Request.Builder().url(url).get().build()).execute().use { resp ->
+        val client = httpClient.newBuilder()
+            .callTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+        client.newCall(Request.Builder().url(url).get().build()).execute().use { resp ->
             val body = resp.body
-            if (!resp.isSuccessful || body == null) return null
-            val bytes = body.bytes()
-            if (bytes.isEmpty()) return null
-            val mime = body.contentType()?.toString()?.substringBefore(';')?.trim()
-                ?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
-            val ext = mime.substringAfterLast('/', "jpg").ifBlank { "jpg" }
-            blossomRepo.uploadMedia(bytes, mime, ext, signer)
+            if (!resp.isSuccessful || body == null) {
+                null
+            } else if (body.contentLength() in 1..Long.MAX_VALUE && body.contentLength() > MAX_IMAGE_BYTES) {
+                null // declared oversize
+            } else {
+                val bytes = readCapped(body.byteStream(), MAX_IMAGE_BYTES)
+                if (bytes == null || bytes.isEmpty()) {
+                    null // overran the cap, or empty
+                } else {
+                    val mime = body.contentType()?.toString()?.substringBefore(';')?.trim()
+                        ?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
+                    val ext = mime.substringAfterLast('/', "jpg").ifBlank { "jpg" }
+                    blossomRepo.uploadMedia(bytes, mime, ext, signer)
+                }
+            }
         }
     } catch (e: CancellationException) {
         throw e // never swallow cancellation
     } catch (e: Exception) {
         null // fall back to the source URL
+    }
+
+    /** Read the stream, returning null if it exceeds [max] (don't buffer a huge image). */
+    private fun readCapped(input: java.io.InputStream, max: Long): ByteArray? = input.use { stream ->
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(8192)
+        var total = 0L
+        while (true) {
+            val n = stream.read(buf)
+            if (n == -1) break
+            total += n
+            if (total > max) return null
+            out.write(buf, 0, n)
+        }
+        out.toByteArray()
+    }
+
+    companion object {
+        private const val MAX_IMAGE_BYTES = 10L * 1024 * 1024 // 10 MB
     }
 }

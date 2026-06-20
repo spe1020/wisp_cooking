@@ -23,7 +23,11 @@ object RecipeSerializer {
      * against web-authored ones. Same title → same d-tag (replaces) — web
      * behavior; mirrored, not de-duplicated.
      */
-    fun slug(title: String): String = title.lowercase().replace(" ", "-")
+    fun slug(title: String): String =
+        // Locale.ROOT, not the device locale: JS `toLowerCase()` is locale-
+        // independent, and a Turkish-locale dotless-i would break web parity
+        // and the "same title → same d-tag" guarantee.
+        title.lowercase(java.util.Locale.ROOT).replace(" ", "-")
 
     /** Structured body → `##`-section markdown (mirrors web `createMarkdown`). */
     fun toContent(recipe: RecipeParser.Recipe): String {
