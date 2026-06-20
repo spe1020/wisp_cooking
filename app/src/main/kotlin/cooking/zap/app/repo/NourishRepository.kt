@@ -89,6 +89,10 @@ class NourishRepository(private val relayPool: RelayPool) {
      */
     private suspend fun ensureAuthenticated(filter: Filter): Boolean {
         relayPool.autoApproveRelayAuth(PANTRY)
+        // DIAG (concern 2.4a): is this a stale (URL-keyed, not cleared on
+        // disconnect) "authenticated" that lets us proceed onto an unauthed
+        // live socket?
+        android.util.Log.d("RLC", "[Nourish] ensureAuth entry: isAuthenticated(pantry)=${relayPool.isAuthenticated(PANTRY)}")
         if (relayPool.isAuthenticated(PANTRY)) return true
         val warm = "nourish-auth-${subSeq.incrementAndGet()}"
         try {

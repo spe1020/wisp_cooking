@@ -473,8 +473,15 @@ class RelayPool(private val prefs: SharedPreferences? = null) {
                             type = ConsoleLogType.NOTICE,
                             message = "CLOSED [${msg.subscriptionId}]: ${msg.message}"
                         ))
+                        // DIAG (concern 2.4a): surface the decisive Nourish/pantry CLOSED
+                        // frame to logcat so we can confirm auth-required vs EOSE-empty.
+                        if (msg.subscriptionId.startsWith("nourish") ||
+                            relay.config.url == RelayConfig.MEMBERS_RELAY) {
+                            Log.d("RLC", "[Pool] CLOSED sub=${msg.subscriptionId} relay=${relay.config.url} msg=${msg.message}")
+                        }
                         if (DiagnosticLogger.isEnabled &&
-                            (msg.subscriptionId.startsWith("notif") || msg.subscriptionId == "dms")) {
+                            (msg.subscriptionId.startsWith("notif") || msg.subscriptionId == "dms" ||
+                                msg.subscriptionId.startsWith("nourish"))) {
                             DiagnosticLogger.log("CLOSED", "sub=${msg.subscriptionId} relay=${relay.config.url} " +
                                 "msg=${msg.message}")
                         }
