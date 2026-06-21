@@ -47,8 +47,8 @@ enum class BottomTab(
     val selectedIconRes: Int? = null,
     val unselectedIconRes: Int? = null
 ) {
-    RECIPES(Routes.RECIPES, R.string.nav_recipes, Icons.Filled.Restaurant, Icons.Outlined.Restaurant),
     FEED(Routes.FEED, R.string.nav_feed, Icons.Filled.Home, Icons.Outlined.Home),
+    RECIPES(Routes.RECIPES, R.string.nav_recipes, Icons.Filled.Restaurant, Icons.Outlined.Restaurant),
     WALLET(Routes.WALLET, R.string.nav_wallet, null, null, R.drawable.ic_wallet, R.drawable.ic_wallet_outlined),
     MESSAGES(Routes.DM_LIST, R.string.nav_messages, Icons.Filled.Forum, Icons.Outlined.Forum),
     NOTIFICATIONS(Routes.NOTIFICATIONS, R.string.nav_notifications, Icons.Filled.Notifications, Icons.Outlined.Notifications)
