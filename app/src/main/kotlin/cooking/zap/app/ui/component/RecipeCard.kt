@@ -60,19 +60,30 @@ fun RecipeCard(
             .fillMaxWidth()
             .clickable { onClick() },
     ) {
-        SubcomposeAsyncImage(
-            model = recipe.image,
-            contentDescription = recipe.title,
-            contentScale = ContentScale.Crop,
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
                 .clip(POSTER_SHAPE),
-            loading = { RecipePosterSkeleton(Modifier.fillMaxSize()) },
-            // Covers both a null/blank image (Coil treats null data as an error)
-            // and a failed load — always a deterministic, offline tile.
-            error = { RecipePlaceholderTile(seed = recipe.id, modifier = Modifier.fillMaxSize()) },
-        )
+        ) {
+            // Pre-validate the URL rather than relying on Coil's error slot for a
+            // null/blank model (a null model can stay in the empty state and
+            // leave a hole). Missing → placeholder directly; real URL → load it,
+            // falling back to the placeholder only on an actual load failure.
+            val imageUrl = recipe.image?.takeIf { it.isNotBlank() }
+            if (imageUrl == null) {
+                RecipePlaceholderTile(seed = recipe.id, modifier = Modifier.fillMaxSize())
+            } else {
+                SubcomposeAsyncImage(
+                    model = imageUrl,
+                    contentDescription = recipe.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                    loading = { RecipePosterSkeleton(Modifier.fillMaxSize()) },
+                    error = { RecipePlaceholderTile(seed = recipe.id, modifier = Modifier.fillMaxSize()) },
+                )
+            }
+        }
         Spacer(Modifier.height(8.dp))
         Text(
             text = recipe.title?.takeIf { it.isNotBlank() } ?: recipe.dTag,
