@@ -56,6 +56,13 @@ interface RecipeFormat {
 
     /** Relay filter to resolve a single recipe by its coordinate (author + d/slug). */
     fun coordinateFilter(author: String, dTag: String): Filter
+
+    /**
+     * NIP-50 full-text search filter for recipes in this format ([query] in the
+     * `search` field, scoped to this format's kind + recipe tags). Used by the
+     * recipe search; format-agnostic so search never hardcodes a kind.
+     */
+    fun searchFilter(query: String, limit: Int): Filter
 }
 
 /** A recipe event before signing — the publisher signs this verbatim. */

@@ -46,4 +46,11 @@ object Nip23RecipeFormat : RecipeFormat {
         dTags = listOf(dTag),
         limit = 1,
     )
+
+    override fun searchFilter(query: String, limit: Int): Filter = Filter(
+        kinds = listOf(RecipeParser.RECIPE_KIND),
+        tTags = RecipeParser.RECIPE_HASHTAGS,
+        search = query,
+        limit = limit,
+    )
 }

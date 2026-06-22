@@ -1391,11 +1391,15 @@ fun WispNavHost(
                 eventRepo = feedViewModel.eventRepo,
                 muteRepo = feedViewModel.muteRepo,
                 contactRepo = feedViewModel.contactRepo,
+                recipeRepo = feedViewModel.recipeRepo,
                 onProfileClick = { pubkey ->
                     navController.navigate("profile/$pubkey")
                 },
                 onNoteClick = { event ->
                     navController.navigate("thread/${event.id}")
+                },
+                onRecipeClick = { author, dTag ->
+                    navController.navigate(Routes.recipe(author, dTag))
                 },
                 onQuotedNoteClick = { eventId ->
                     navController.navigate("thread/$eventId")
