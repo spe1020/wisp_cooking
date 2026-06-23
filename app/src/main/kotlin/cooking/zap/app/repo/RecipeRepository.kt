@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -103,7 +104,22 @@ class RecipeRepository(
      */
     @Volatile
     private var epoch = 0L
-    private var subCounter = 0
+    /**
+     * Subscription-id sequence. `AtomicInteger` because ids are minted from
+     * multiple dispatchers — [collectRecipePage] runs on [processingContext]
+     * while [loadFeed]/[loadMore] mint from the main thread — and a plain `++`
+     * across threads is a data race that can yield duplicate (mis-routed) ids.
+     */
+    private val subCounter = java.util.concurrent.atomic.AtomicInteger(0)
+
+    /**
+     * Single-flight guard for [preloadCatalog]: the background deep fill runs at
+     * most once per process (recipe search triggers it). `AtomicBoolean` so the
+     * check-and-flip is atomic — two concurrent callers can't both observe
+     * `false` and each launch a job.
+     */
+    private val catalogPreloaded = java.util.concurrent.atomic.AtomicBoolean(false)
+    private var preloadJob: Job? = null
 
     /**
      * The widened recipe read union (coverage). Recipes are discovered by
@@ -134,7 +150,7 @@ class RecipeRepository(
      * aggregator's recent recipes still land.
      */
     private fun launchNewestWindowQuery(limit: Int, loadingFlag: MutableStateFlow<Boolean>): Job {
-        val subId = "recipe-feed-${subCounter++}"
+        val subId = "recipe-feed-${subCounter.getAndIncrement()}"
         loadingFlag.value = true
         return scope.launch(processingContext) {
             val seenIds = mutableSetOf<String>()
@@ -233,7 +249,7 @@ class RecipeRepository(
         // Snapshot the epoch: if a refresh bumps it mid-flight, this page must
         // not flip exhausted afterwards (its EOSE round is stale).
         val startedEpoch = epoch
-        val subId = "recipe-more-${subCounter++}"
+        val subId = "recipe-more-${subCounter.getAndIncrement()}"
         loadMoreJob = scope.launch(processingContext) {
             // Cursor = the oldest event created_at we hold (NIP-01 `until` is on
             // the event timestamp, not the display `publishedAt`). Read under the
@@ -305,7 +321,7 @@ class RecipeRepository(
         findRecipeEvent(author, dTag)?.let { cached ->
             return RecipeFormats.forEvent(cached)?.parse(cached)
         }
-        val subId = "recipe-one-${subCounter++}"
+        val subId = "recipe-one-${subCounter.getAndIncrement()}"
         val matches = mutableListOf<NostrEvent>()
         val collector = scope.launch(processingContext) {
             relayPool.relayEvents.collect { relayEvent ->
@@ -349,11 +365,121 @@ class RecipeRepository(
         return dedupeAcrossFormats(cached) { RecipeFormats.rankOf(it) }.firstOrNull()
     }
 
+    /**
+     * Search the **FULL persisted recipe catalog** (ObjectBox), not just the
+     * grid window. Reads every persisted event of each active format's kind
+     * (`kind` is `@Index` — cheap, bounded by [limit]), collapses to one event
+     * per logical recipe (coordinate newest-wins → cross-format canonical pick,
+     * the same two-stage dedup as the live feed), parses via the format
+     * registry, and keeps those whose title or summary contains [query]
+     * (case-insensitive). Format-agnostic: no hardcoded kind. Newest first.
+     *
+     * Returns empty when persistence is unavailable or the query is blank.
+     */
+    suspend fun searchCachedRecipes(
+        query: String,
+        limit: Int = 2_000,
+    ): List<RecipeParser.Recipe> = withContext(processingContext) {
+        val needle = query.trim()
+        if (needle.isEmpty()) return@withContext emptyList()
+        val persistence = eventRepo.eventPersistence ?: return@withContext emptyList()
+        val events = RecipeFormats.active.flatMap { persistence.getEventsByKind(it.kind, limit) }
+        dedupeAcrossFormats(events) { RecipeFormats.rankOf(it) }
+            .mapNotNull { RecipeFormats.forEvent(it)?.parse(it) }
+            .filter { recipe ->
+                recipe.title?.contains(needle, ignoreCase = true) == true ||
+                    recipe.summary?.contains(needle, ignoreCase = true) == true
+            }
+            .sortedByDescending { it.publishedAt }
+    }
+
+    /**
+     * Background **deep fill** for recipe search: page the recipe feed all the
+     * way back so old recipes (the "Mai Tai" case) land in ObjectBox and become
+     * findable by [searchCachedRecipes]. Runs at most ONCE per process
+     * (single-flight via [catalogPreloaded]) and is bounded — it stops on
+     * genuine exhaustion (a full EOSE round adding nothing new), after two
+     * consecutive empty pages (slow-relay stall), or at [maxPages] — so it can
+     * never run unbounded. Events persist through the normal [cacheEvent] path;
+     * the feed [recipes] flow also fills in as pages land.
+     */
+    fun preloadCatalog(maxPages: Int = 40, perPage: Int = 100) {
+        // Atomic check-and-flip: the first caller wins and launches; any
+        // concurrent or later caller sees `true` and returns. Never reset, so
+        // the deep fill runs exactly once per process.
+        if (!catalogPreloaded.compareAndSet(false, true)) return
+        preloadJob = scope.launch(processingContext) {
+            var consecutiveEmpty = 0
+            var pages = 0
+            while (pages < maxPages) {
+                // Cursor = oldest event we hold; null on the first page fetches the
+                // newest window and seeds the cursor. NIP-01 `until` is on the
+                // event timestamp, so page from created_at (not publishedAt).
+                val oldest = coordMutex.withLock { byCoordinate.values.minOfOrNull { it.created_at } }
+                val until = oldest?.minus(1)
+                val result = collectRecipePage(until, perPage)
+                pages++
+                if (result.newCoordinates == 0) {
+                    // Real exhaustion (full EOSE, nothing new) → stop immediately.
+                    // A timed-out empty page (slow relay) → allow one retry, then stop.
+                    if (result.fullEose || ++consecutiveEmpty >= 2) break
+                } else {
+                    consecutiveEmpty = 0
+                }
+            }
+        }
+    }
+
+    /** One backward page for [preloadCatalog]; same accept/emit path as [loadMore]. */
+    private suspend fun collectRecipePage(until: Long?, pageSize: Int): PageResult {
+        val subId = "recipe-preload-${subCounter.getAndIncrement()}"
+        var newCoordinates = 0
+        val seenIds = mutableSetOf<String>()
+        val collector = scope.launch(processingContext) {
+            relayPool.relayEvents.collect { relayEvent ->
+                if (relayEvent.subscriptionId != subId) return@collect
+                val event = relayEvent.event
+                if (event.id in seenIds) return@collect
+                if (RecipeFormats.forEvent(event) == null) return@collect
+                seenIds.add(event.id)
+                eventRepo.cacheEvent(event)
+                eventRepo.requestProfileIfMissing(event.pubkey)
+                coordMutex.withLock {
+                    if (acceptEvent(event)) {
+                        newCoordinates++
+                        emitRecipes()
+                    }
+                }
+            }
+        }
+        val filters = RecipeFormats.active.map { it.feedFilter(pageSize, until) }
+        val req = ClientMessage.req(subId, filters)
+        var sent = 0
+        for (url in readRelays()) {
+            if (relayPool.sendToRelayOrEphemeral(url, req)) sent++
+        }
+        var fullEose = false
+        try {
+            if (sent > 0) {
+                val eoseCount = subManager.awaitEoseCount(subId, expectedCount = sent, timeoutMs = 8_000)
+                fullEose = eoseCount >= sent
+            }
+        } finally {
+            collector.cancel()
+            subManager.closeSubscription(subId)
+        }
+        return PageResult(newCoordinates, fullEose)
+    }
+
+    /** Outcome of one [collectRecipePage]: new coordinates added + full-EOSE flag. */
+    private data class PageResult(val newCoordinates: Int, val fullEose: Boolean)
+
     /** Drop the in-memory feed (e.g. on account switch). */
     fun clear() {
         loadJob?.cancel()
         loadMoreJob?.cancel()
         refreshJob?.cancel()
+        preloadJob?.cancel()
         epoch++
         byCoordinate.clear()
         _recipes.value = emptyList()

@@ -268,18 +268,14 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
         val activeSubId = when (activeFilter) {
             SearchFilter.RECIPES -> {
-                // (1) GUARANTEED baseline — filter already-loaded recipes by
-                // title/summary. Instant, and works even if the search relay
-                // doesn't index kind-30023 over NIP-50.
-                recipeRepoRef?.recipes?.value
-                    ?.filter { recipeMatches(it, trimmed) }
-                    ?.forEach { recipeByCoord["${it.author}:${it.dTag}"] = it }
-                _recipeResults.value = recipeByCoord.values.toList()
-                // (2) NETWORK NIP-50 via the registry searchFilter (no hardcoded
-                // 30023) — finds recipes not yet loaded.
+                // OPPORTUNISTIC NETWORK NIP-50 via the registry searchFilter (no
+                // hardcoded 30023). NOT required for results — the guaranteed path
+                // is the persisted-catalog baseline + deep fill seeded in the
+                // coroutine below. Fanned to the selected relays PLUS dedicated
+                // recipe-search relays that actually index kind-30023.
                 val recipeFilters = RecipeFormats.active.map { it.searchFilter(trimmed, 50) }
                 val recipeReq = ClientMessage.req(recipeSubId, recipeFilters)
-                for (url in relaysToQuery) {
+                for (url in (relaysToQuery + RECIPE_SEARCH_RELAYS).distinct()) {
                     relayPool.sendToRelayOrEphemeral(url, recipeReq)
                 }
                 recipeSubId
@@ -320,13 +316,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                             val event = relayEvent.event
                             // Parse via the registry (format-agnostic); skip non-recipes.
                             val recipe = RecipeFormats.forEvent(event)?.parse(event) ?: return@collect
-                            val key = "${recipe.author}:${recipe.dTag}"
-                            // kind-30023 is replaceable — keep the NEWEST version per
-                            // coordinate (publishedAt == created_at for live recipes;
-                            // lower id breaks ties), so titles/images stay current.
-                            val existing = recipeByCoord[key]
-                            if (existing == null || isNewerRecipe(recipe, existing)) {
-                                recipeByCoord[key] = recipe
+                            // Same newest-wins coordinate merge as the baseline/feed
+                            // paths (kind-30023 is replaceable). Only on a real change
+                            // do we cache, fetch the author, and re-publish.
+                            if (mergeRecipe(recipeByCoord, recipe)) {
                                 eventRepo.cacheEvent(event)
                                 eventRepo.requestProfileIfMissing(recipe.author)
                                 _recipeResults.value = recipeByCoord.values.toList()
@@ -358,6 +351,33 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
+            // RECIPES: the GUARANTEED results path (the network NIP-50 fan-out
+            // above is only opportunistic). Seed an instant baseline from the
+            // FULL persisted catalog (ObjectBox), kick off a bounded background
+            // deep fill so old recipes ("Mai Tai") land in the catalog, and
+            // re-filter live as the feed / deep fill populate.
+            if (activeFilter == SearchFilter.RECIPES) {
+                val cached = recipeRepoRef?.searchCachedRecipes(trimmed).orEmpty()
+                var changed = false
+                cached.forEach { if (mergeRecipe(recipeByCoord, it)) changed = true }
+                if (changed) _recipeResults.value = recipeByCoord.values.toList()
+                recipeRepoRef?.preloadCatalog()
+                // Deliberately NOT cancelled at the 5s network timeout below —
+                // preloadCatalog() pages for longer than that, so this collector
+                // must stay live to surface deep-fill results as they land. It is
+                // a child of searchJob, so the next search()/clear() (which
+                // cancels searchJob) tears it down when the query changes.
+                launch {
+                    recipeRepoRef?.recipes?.collect { feed ->
+                        var merged = false
+                        feed.asSequence()
+                            .filter { recipeMatches(it, trimmed) }
+                            .forEach { if (mergeRecipe(recipeByCoord, it)) merged = true }
+                        if (merged) _recipeResults.value = recipeByCoord.values.toList()
+                    }
+                }
+            }
+
             val eoseJob = launch {
                 relayPool.eoseSignals.collect { subId ->
                     if (subId == activeSubId) {
@@ -383,6 +403,10 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
 
+            // Opportunistic network search times out after 5s: stop the spinner,
+            // close the NIP-50 subs, and cancel the network collectors. The
+            // recipe live-refilter collector is intentionally left running (see
+            // above) so deep-fill results keep landing until the query changes.
             delay(5000)
             _isSearching.value = false
             closeSubscriptions(relayPool)
@@ -401,6 +425,26 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private fun isNewerRecipe(incoming: RecipeParser.Recipe, existing: RecipeParser.Recipe): Boolean = when {
         incoming.publishedAt != existing.publishedAt -> incoming.publishedAt > existing.publishedAt
         else -> incoming.id < existing.id
+    }
+
+    /**
+     * Merge [recipe] into [into] keyed by addressable coordinate ("author:dTag"),
+     * keeping the newest per coordinate ([isNewerRecipe]). Returns true iff the
+     * map changed — so callers only re-publish [_recipeResults] on a real update.
+     * Used by all three recipe inputs (persisted baseline, live feed, network).
+     */
+    private fun mergeRecipe(
+        into: LinkedHashMap<String, RecipeParser.Recipe>,
+        recipe: RecipeParser.Recipe,
+    ): Boolean {
+        val key = "${recipe.author}:${recipe.dTag}"
+        val existing = into[key]
+        return if (existing == null || isNewerRecipe(recipe, existing)) {
+            into[key] = recipe
+            true
+        } else {
+            false
+        }
     }
 
     /** True iff the recipe's title or summary contains [query] (case-insensitive). */
@@ -426,6 +470,15 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
 
     companion object {
         const val DEFAULT_SEARCH_RELAY = "wss://search.nostrarchives.com"
+
+        /**
+         * Extra relays the recipe NIP-50 query always fans to (on top of the
+         * user's selected search relays), because they actually index
+         * kind-30023 over full-text search. Opportunistic only — recipe results
+         * are guaranteed by the persisted-catalog baseline + deep fill, so an
+         * empty network response here never empties the results.
+         */
+        val RECIPE_SEARCH_RELAYS = listOf("wss://relay.nostr.band")
     }
 
     private fun closeSubscriptions(relayPool: RelayPool) {
