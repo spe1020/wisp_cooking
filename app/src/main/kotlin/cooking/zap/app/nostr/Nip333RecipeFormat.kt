@@ -46,4 +46,7 @@ object Nip333RecipeFormat : RecipeFormat {
 
     override fun coordinateFilter(author: String, dTag: String): Filter =
         TODO("Relay filter to resolve a single recipe by coordinate.")
+
+    override fun searchFilter(query: String, limit: Int): Filter =
+        TODO("NIP-50 search filter for this format's recipes.")
 }

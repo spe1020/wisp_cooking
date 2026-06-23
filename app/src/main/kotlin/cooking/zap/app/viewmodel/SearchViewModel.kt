@@ -7,18 +7,22 @@ import cooking.zap.app.nostr.ClientMessage
 import cooking.zap.app.nostr.Filter
 import cooking.zap.app.nostr.NostrEvent
 import cooking.zap.app.nostr.ProfileData
+import cooking.zap.app.nostr.RecipeFormats
+import cooking.zap.app.nostr.RecipeParser
 import cooking.zap.app.relay.RelayConfig
 import cooking.zap.app.relay.RelayPool
 import cooking.zap.app.repo.EventRepository
 import cooking.zap.app.repo.KeyRepository
 import cooking.zap.app.repo.MuteRepository
+import cooking.zap.app.repo.RecipeRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-enum class SearchFilter { PEOPLE, NOTES }
+// Recipes first — recipe-first, mirroring the web's submit priority.
+enum class SearchFilter { RECIPES, PEOPLE, NOTES }
 
 enum class RelayOption {
     DEFAULT,
@@ -32,7 +36,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query
 
-    private val _filter = MutableStateFlow(SearchFilter.PEOPLE)
+    private val _filter = MutableStateFlow(SearchFilter.RECIPES)
     val filter: StateFlow<SearchFilter> = _filter
 
     // Relay selection
@@ -63,6 +67,9 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private val _notes = MutableStateFlow<List<NostrEvent>>(emptyList())
     val notes: StateFlow<List<NostrEvent>> = _notes
 
+    private val _recipeResults = MutableStateFlow<List<RecipeParser.Recipe>>(emptyList())
+    val recipeResults: StateFlow<List<RecipeParser.Recipe>> = _recipeResults
+
     private val _isSearching = MutableStateFlow(false)
     val isSearching: StateFlow<Boolean> = _isSearching
 
@@ -71,11 +78,13 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private var relayPool: RelayPool? = null
     private var eventRepoRef: EventRepository? = null
     private var muteRepoRef: MuteRepository? = null
+    private var recipeRepoRef: RecipeRepository? = null
     private var autoSearchJob: Job? = null
     private var searchCounter = 0
 
     private var userSubId = "search-users-0"
     private var noteSubId = "search-notes-0"
+    private var recipeSubId = "search-recipes-0"
     private var authorSubId = "search-author-0"
     private var metricsSubId = "engage-search-0"
 
@@ -117,10 +126,16 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun initSearchRefs(relayPool: RelayPool, eventRepo: EventRepository, muteRepo: MuteRepository?) {
+    fun initSearchRefs(
+        relayPool: RelayPool,
+        eventRepo: EventRepository,
+        muteRepo: MuteRepository?,
+        recipeRepo: RecipeRepository? = null,
+    ) {
         if (this.relayPool == null) this.relayPool = relayPool
         if (this.eventRepoRef == null) this.eventRepoRef = eventRepo
         if (this.muteRepoRef == null) this.muteRepoRef = muteRepo
+        if (this.recipeRepoRef == null && recipeRepo != null) this.recipeRepoRef = recipeRepo
     }
 
     fun updateQuery(newQuery: String) {
@@ -230,12 +245,14 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         searchCounter++
         userSubId = "search-users-$searchCounter"
         noteSubId = "search-notes-$searchCounter"
+        recipeSubId = "search-recipes-$searchCounter"
         metricsSubId = "engage-search-$searchCounter"
 
         _query.value = trimmed
         _isSearching.value = true
         _users.value = emptyList()
         _notes.value = emptyList()
+        _recipeResults.value = emptyList()
 
         val activeFilter = _filter.value
         val relaysToQuery = when (_selectedRelayOption.value) {
@@ -244,7 +261,29 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
             RelayOption.INDIVIDUAL -> listOfNotNull(_selectedRelayUrl.value)
         }
 
+        // Recipe search merges (1) an instant client-side baseline over loaded
+        // recipes + (2) streaming NIP-50 network results, deduped by addressable
+        // coordinate ("author:dTag"). Mutated only on the main dispatcher.
+        val recipeByCoord = LinkedHashMap<String, RecipeParser.Recipe>()
+
         val activeSubId = when (activeFilter) {
+            SearchFilter.RECIPES -> {
+                // (1) GUARANTEED baseline — filter already-loaded recipes by
+                // title/summary. Instant, and works even if the search relay
+                // doesn't index kind-30023 over NIP-50.
+                recipeRepoRef?.recipes?.value
+                    ?.filter { recipeMatches(it, trimmed) }
+                    ?.forEach { recipeByCoord["${it.author}:${it.dTag}"] = it }
+                _recipeResults.value = recipeByCoord.values.toList()
+                // (2) NETWORK NIP-50 via the registry searchFilter (no hardcoded
+                // 30023) — finds recipes not yet loaded.
+                val recipeFilters = RecipeFormats.active.map { it.searchFilter(trimmed, 50) }
+                val recipeReq = ClientMessage.req(recipeSubId, recipeFilters)
+                for (url in relaysToQuery) {
+                    relayPool.sendToRelayOrEphemeral(url, recipeReq)
+                }
+                recipeSubId
+            }
             SearchFilter.PEOPLE -> {
                 val userFilter = Filter(kinds = listOf(0), search = trimmed, limit = 20)
                 val userReq = ClientMessage.req(userSubId, userFilter)
@@ -277,6 +316,22 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
                 relayPool.relayEvents.collect { relayEvent ->
                     if (relayEvent.subscriptionId != activeSubId) return@collect
                     when (activeFilter) {
+                        SearchFilter.RECIPES -> {
+                            val event = relayEvent.event
+                            // Parse via the registry (format-agnostic); skip non-recipes.
+                            val recipe = RecipeFormats.forEvent(event)?.parse(event) ?: return@collect
+                            val key = "${recipe.author}:${recipe.dTag}"
+                            // kind-30023 is replaceable — keep the NEWEST version per
+                            // coordinate (publishedAt == created_at for live recipes;
+                            // lower id breaks ties), so titles/images stay current.
+                            val existing = recipeByCoord[key]
+                            if (existing == null || isNewerRecipe(recipe, existing)) {
+                                recipeByCoord[key] = recipe
+                                eventRepo.cacheEvent(event)
+                                eventRepo.requestProfileIfMissing(recipe.author)
+                                _recipeResults.value = recipeByCoord.values.toList()
+                            }
+                        }
                         SearchFilter.PEOPLE -> {
                             val event = relayEvent.event
                             if (event.kind == 0 && event.pubkey !in seenUserPubkeys) {
@@ -336,6 +391,25 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Replaceable-event newest-wins (mirrors RecipeRepository.preferNewer): a
+     * higher effective timestamp wins; on a tie the lexicographically lower id
+     * is kept. [RecipeParser.Recipe.publishedAt] is `published_at` if present,
+     * else the event `created_at` (absent on live zapcooking recipes, so it ==
+     * created_at there).
+     */
+    private fun isNewerRecipe(incoming: RecipeParser.Recipe, existing: RecipeParser.Recipe): Boolean = when {
+        incoming.publishedAt != existing.publishedAt -> incoming.publishedAt > existing.publishedAt
+        else -> incoming.id < existing.id
+    }
+
+    /** True iff the recipe's title or summary contains [query] (case-insensitive). */
+    private fun recipeMatches(recipe: RecipeParser.Recipe, query: String): Boolean {
+        val q = query.lowercase()
+        return recipe.title?.lowercase()?.contains(q) == true ||
+            recipe.summary?.lowercase()?.contains(q) == true
+    }
+
     fun clear() {
         searchJob?.cancel()
         authorSearchJob?.cancel()
@@ -343,6 +417,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
         _query.value = ""
         _users.value = emptyList()
         _notes.value = emptyList()
+        _recipeResults.value = emptyList()
         _isSearching.value = false
         _authorFilter.value = null
         _authorSearchResults.value = emptyList()
@@ -356,6 +431,7 @@ class SearchViewModel(app: Application) : AndroidViewModel(app) {
     private fun closeSubscriptions(relayPool: RelayPool) {
         relayPool.closeOnAllRelays(userSubId)
         relayPool.closeOnAllRelays(noteSubId)
+        relayPool.closeOnAllRelays(recipeSubId)
         relayPool.closeOnAllRelays(authorSubId)
         relayPool.closeOnAllRelays(metricsSubId)
     }

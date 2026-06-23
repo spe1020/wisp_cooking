@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.Restaurant
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.AlertDialog
@@ -82,6 +83,10 @@ import cooking.zap.app.ui.component.NoteActions
 import cooking.zap.app.ui.component.NsecPasteGuard
 import cooking.zap.app.ui.component.PostCard
 import cooking.zap.app.ui.component.ProfilePicture
+import cooking.zap.app.nostr.RecipeParser
+import coil3.compose.AsyncImage
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.draw.clip
 import cooking.zap.app.viewmodel.RelayOption
 import cooking.zap.app.viewmodel.SearchFilter
 import cooking.zap.app.viewmodel.SearchViewModel
@@ -95,8 +100,10 @@ fun SearchScreen(
     eventRepo: EventRepository,
     muteRepo: MuteRepository? = null,
     contactRepo: ContactRepository? = null,
+    recipeRepo: cooking.zap.app.repo.RecipeRepository? = null,
     onProfileClick: (String) -> Unit,
     onNoteClick: (NostrEvent) -> Unit,
+    onRecipeClick: (author: String, dTag: String) -> Unit = { _, _ -> },
     onQuotedNoteClick: ((String) -> Unit)? = null,
     onReply: (NostrEvent) -> Unit = {},
     onReact: (NostrEvent, String) -> Unit = { _, _ -> },
@@ -125,6 +132,7 @@ fun SearchScreen(
     val filter by viewModel.filter.collectAsState()
     val users by viewModel.users.collectAsState()
     val notes by viewModel.notes.collectAsState()
+    val recipeResults by viewModel.recipeResults.collectAsState()
     val isSearching by viewModel.isSearching.collectAsState()
     val selectedRelayOption by viewModel.selectedRelayOption.collectAsState()
     val selectedRelayUrl by viewModel.selectedRelayUrl.collectAsState()
@@ -160,7 +168,7 @@ fun SearchScreen(
     LaunchedEffect(Unit) {
         try { focusRequester.requestFocus() } catch (_: IllegalStateException) {}
         // Seed search refs so debounced auto-search works before first manual search
-        viewModel.initSearchRefs(relayPool, eventRepo, muteRepo)
+        viewModel.initSearchRefs(relayPool, eventRepo, muteRepo, recipeRepo)
     }
 
     Scaffold(
@@ -177,13 +185,20 @@ fun SearchScreen(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Segmented tab: People | Notes
+                    // Segmented tab: Recipes | People | Notes (recipe-first)
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(50))
                             .padding(4.dp)
                     ) {
+                        SearchTab(
+                            label = stringResource(R.string.tab_recipes),
+                            icon = Icons.Default.Restaurant,
+                            selected = filter == SearchFilter.RECIPES,
+                            onClick = { viewModel.selectFilter(SearchFilter.RECIPES) },
+                            modifier = Modifier.weight(1f)
+                        )
                         SearchTab(
                             label = stringResource(R.string.tab_people),
                             icon = Icons.Default.AccountCircle,
@@ -281,8 +296,16 @@ fun SearchScreen(
             }
 
             // Results
+            // Emptiness is per-active-tab so recipe results (incl. the instant
+            // client-side baseline) show under the spinner instead of being
+            // hidden by the global people/notes check.
+            val activeResultsEmpty = when (filter) {
+                SearchFilter.RECIPES -> recipeResults.isEmpty()
+                SearchFilter.PEOPLE -> users.isEmpty()
+                SearchFilter.NOTES -> notes.isEmpty()
+            }
             when {
-                isSearching -> {
+                isSearching && activeResultsEmpty -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -291,7 +314,7 @@ fun SearchScreen(
                     }
                 }
 
-                users.isEmpty() && notes.isEmpty() && query.isNotEmpty() && !isSearching -> {
+                activeResultsEmpty && query.isNotEmpty() && !isSearching -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -303,7 +326,7 @@ fun SearchScreen(
                     }
                 }
 
-                users.isEmpty() && notes.isEmpty() -> {
+                activeResultsEmpty -> {
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.Center
@@ -323,7 +346,19 @@ fun SearchScreen(
                         users.sortedByDescending { contactRepo?.isFollowing(it.pubkey) == true }
                     }
                     LazyColumn(modifier = Modifier.fillMaxSize()) {
-                        if (filter == SearchFilter.PEOPLE) {
+                        when (filter) {
+                            SearchFilter.RECIPES -> {
+                                items(recipeResults, key = { "${it.author}:${it.dTag}" }, contentType = { "recipe" }) { recipe ->
+                                    val profile = eventRepo.getProfileData(recipe.author)
+                                    RecipeResultItem(
+                                        recipe = recipe,
+                                        authorName = profile?.displayString,
+                                        authorPicture = profile?.picture,
+                                        onClick = { onRecipeClick(recipe.author, recipe.dTag) },
+                                    )
+                                }
+                            }
+                            SearchFilter.PEOPLE -> {
                             items(sortedUsers, key = { it.pubkey }, contentType = { "user" }) { profile ->
                                 UserResultItem(
                                     profile = profile,
@@ -332,7 +367,8 @@ fun SearchScreen(
                                     onToggleFollow = { onToggleFollow(profile.pubkey) }
                                 )
                             }
-                        } else {
+                            }
+                            SearchFilter.NOTES -> {
                             items(notes, key = { it.id }, contentType = { "post" }) { event ->
                                 val translationState = remember(translationVersion, event.id) {
                                     translationRepo?.getState(event.id) ?: TranslationState()
@@ -394,9 +430,74 @@ fun SearchScreen(
                                     onZapPollVote = { idx -> onZapPollVote(event.id, idx) }
                                 )
                             }
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+/** Recipe search result row — thumbnail + title + author. Tap → recipe detail. */
+@Composable
+private fun RecipeResultItem(
+    recipe: RecipeParser.Recipe,
+    authorName: String?,
+    authorPicture: String?,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val image = recipe.image?.takeIf { it.isNotBlank() }
+        if (image != null) {
+            AsyncImage(
+                model = image,
+                contentDescription = recipe.title,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Default.Restaurant,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    modifier = Modifier.size(24.dp),
+                )
+            }
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = recipe.title?.takeIf { it.isNotBlank() } ?: recipe.dTag,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                ProfilePicture(url = authorPicture, size = 16)
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = authorName ?: "Anonymous",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
