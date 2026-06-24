@@ -374,6 +374,74 @@ class RecipeRepository(
     }
 
     /**
+     * Cache-first coordinate lookup for one concrete recipe kind.
+     * Falls back to ObjectBox author+kind scan to recover cold-start events.
+     */
+    fun findRecipeEventByCoordinate(kind: Int, author: String, dTag: String): NostrEvent? {
+        eventRepo.findAddressableEvent(kind, author, dTag)?.let { cached ->
+            if (RecipeFormats.forEvent(cached) != null) return cached
+        }
+        val persistence = eventRepo.eventPersistence ?: return null
+        val fromDb = persistence.getEventsByAuthorAndKind(author, kind, limit = 200)
+            .filter { eventHasDTag(it, dTag) }
+        return dedupeNewestPerCoordinate(fromDb).firstOrNull()
+    }
+
+    /**
+     * Resolve one recipe event by exact coordinate (kind+author+d) from the same
+     * widened recipe read union used by feed/tag queries.
+     */
+    suspend fun requestRecipeEventByCoordinate(kind: Int, author: String, dTag: String): NostrEvent? {
+        val normalizedAuthor = author.trim()
+        val normalizedDTag = dTag.trim()
+        if (normalizedAuthor.isBlank() || normalizedDTag.isBlank()) return null
+        if (RecipeFormats.active.none { it.kind == kind }) return null
+
+        val cached = findRecipeEventByCoordinate(kind, normalizedAuthor, normalizedDTag)
+        if (cached != null) return cached
+
+        val subId = "recipe-coordinate-${subCounter.getAndIncrement()}"
+        val matches = mutableListOf<NostrEvent>()
+        val collector = scope.launch(processingContext) {
+            relayPool.relayEvents.collect { relayEvent ->
+                if (relayEvent.subscriptionId != subId) return@collect
+                val event = relayEvent.event
+                if (event.kind != kind || event.pubkey != normalizedAuthor) return@collect
+                if (!eventHasDTag(event, normalizedDTag)) return@collect
+                if (RecipeFormats.forEvent(event) == null) return@collect
+                eventRepo.cacheEvent(event)
+                eventRepo.requestProfileIfMissing(event.pubkey)
+                matches.add(event)
+            }
+        }
+
+        val req = ClientMessage.req(
+            subId,
+            cooking.zap.app.nostr.Filter(
+                kinds = listOf(kind),
+                authors = listOf(normalizedAuthor),
+                dTags = listOf(normalizedDTag),
+                limit = 1,
+            )
+        )
+        var sent = 0
+        for (url in readRelays()) {
+            if (relayPool.sendToRelayOrEphemeral(url, req)) sent++
+        }
+        try {
+            if (sent > 0) {
+                subManager.awaitEoseCount(subId, expectedCount = sent, timeoutMs = 8_000)
+                delay(EOSE_GRACE_MS)
+            }
+        } finally {
+            collector.cancel()
+            subManager.closeSubscription(subId)
+        }
+
+        return dedupeNewestPerCoordinate(matches).firstOrNull()
+    }
+
+    /**
      * The raw recipe event for a coordinate, from cache only, dispatched across
      * **all active formats** (the detail screen's engagement bar needs the raw
      * event; a future second-format recipe must resolve here too, not just in
@@ -676,6 +744,11 @@ class RecipeRepository(
         }
         val recipe = RecipeFormats.forEvent(event)?.parse(event) ?: return false
         return recipe.categories.any { it.equals(normalizedTag, ignoreCase = true) }
+    }
+
+    private fun eventHasDTag(event: NostrEvent, dTag: String): Boolean {
+        val needle = dTag.trim()
+        return event.tags.any { it.size >= 2 && it[0] == "d" && it[1].trim() == needle }
     }
 
     private fun matchesNip23CategoryTag(event: NostrEvent, normalizedTag: String): Boolean {

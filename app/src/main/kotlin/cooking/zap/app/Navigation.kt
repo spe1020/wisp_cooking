@@ -82,7 +82,7 @@ import cooking.zap.app.ui.screen.ArticleScreen
 import cooking.zap.app.ui.screen.RecipeDetailScreen
 import cooking.zap.app.ui.screen.RecipeComposeScreen
 import cooking.zap.app.ui.screen.RecipeFeedScreen
-import cooking.zap.app.ui.screen.RecipePackDetailStubScreen
+import cooking.zap.app.ui.screen.RecipePackDetailScreen
 import cooking.zap.app.ui.screen.RecipeTagFeedScreen
 import cooking.zap.app.ui.screen.OnlyFoodFeedScreen
 import cooking.zap.app.ui.screen.CheffyScreen
@@ -118,6 +118,7 @@ import cooking.zap.app.viewmodel.ArticleViewModel
 import cooking.zap.app.viewmodel.RecipeDetailViewModel
 import cooking.zap.app.viewmodel.RecipeComposeViewModel
 import cooking.zap.app.viewmodel.RecipeFeedViewModel
+import cooking.zap.app.viewmodel.RecipePackDetailViewModel
 import cooking.zap.app.viewmodel.RecipePacksViewModel
 import cooking.zap.app.viewmodel.RecipeTagFeedViewModel
 import cooking.zap.app.viewmodel.OnlyFoodFeedViewModel
@@ -2792,9 +2793,26 @@ fun WispNavHost(
                 navArgument("author") { type = NavType.StringType },
                 navArgument("dTag") { type = NavType.StringType }
             )
-        ) {
-            RecipePackDetailStubScreen(
-                onBack = { navController.popBackStack() }
+        ) { backStackEntry ->
+            val author = backStackEntry.arguments?.getString("author") ?: return@composable
+            val encodedDTag = backStackEntry.arguments?.getString("dTag") ?: return@composable
+            val dTag = java.net.URLDecoder.decode(encodedDTag, "UTF-8")
+            val recipePackDetailViewModel: RecipePackDetailViewModel = viewModel()
+            LaunchedEffect(author, dTag) {
+                recipePackDetailViewModel.load(
+                    author = author,
+                    dTag = dTag,
+                    packRepo = feedViewModel.recipePackRepo,
+                    recipeRepo = feedViewModel.recipeRepo,
+                )
+            }
+            RecipePackDetailScreen(
+                viewModel = recipePackDetailViewModel,
+                eventRepo = feedViewModel.eventRepo,
+                onBack = { navController.popBackStack() },
+                onRecipeClick = { recipeAuthor, recipeDTag ->
+                    navController.navigate(Routes.recipe(recipeAuthor, recipeDTag))
+                }
             )
         }
 
