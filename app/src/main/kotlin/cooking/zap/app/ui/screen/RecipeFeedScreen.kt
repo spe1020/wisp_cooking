@@ -49,6 +49,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import cooking.zap.app.nostr.RecipeTag
 import cooking.zap.app.nostr.RecipeTagCatalog
 import cooking.zap.app.ui.component.ProfilePicture
 import cooking.zap.app.ui.component.RecipeCard
@@ -277,7 +278,7 @@ fun RecipeFeedScreen(
 
 @Composable
 private fun RecipeTagChip(
-    tag: cooking.zap.app.nostr.RecipeTag,
+    tag: RecipeTag,
     onClick: () -> Unit,
 ) {
     FilterChip(
