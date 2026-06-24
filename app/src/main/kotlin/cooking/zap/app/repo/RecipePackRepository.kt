@@ -33,6 +33,12 @@ data class RecipePackSummary(
     val recipeCount: Int,
 )
 
+data class PackRecipeCoordinate(
+    val kind: Int,
+    val author: String,
+    val dTag: String,
+)
+
 /**
  * Read-only pack listing repository for PR A. Owns Discover / Mine / Saved fetches.
  */
@@ -235,6 +241,57 @@ class RecipePackRepository(
         }
     }
 
+    /**
+     * Resolve one pack event by addressable coordinate.
+     * Cache-first via ObjectBox, then relay fill through the same union+outbox
+     * query strategy used by listing coverage.
+     */
+    suspend fun requestPackEvent(author: String, dTag: String): NostrEvent? {
+        val normalizedAuthor = author.trim()
+        val normalizedDTag = dTag.trim()
+        if (normalizedAuthor.isBlank() || normalizedDTag.isBlank()) return null
+
+        val cached = cachedPackEventByCoordinate(normalizedAuthor, normalizedDTag)
+        val queried = queryPacks(
+            subPrefix = "pack-coordinate",
+            readFilters = PackFormats.active.map { it.packByCoordinateFilter(normalizedAuthor, normalizedDTag) },
+            authorScoped = PackFormats.active.map {
+                AuthorScopedFilter(
+                    author = normalizedAuthor,
+                    filter = it.packByCoordinateFilter(normalizedAuthor, normalizedDTag),
+                )
+            }
+        )
+        return dedupeNewestPerPackCoordinate(
+            buildList {
+                cached?.let(::add)
+                addAll(queried)
+            }
+        ).firstOrNull { event ->
+            PackFormats.forEvent(event) != null &&
+                event.pubkey == normalizedAuthor &&
+                eventHasDTag(event, normalizedDTag)
+        }
+    }
+
+    /** Extract de-duplicated recipe coordinates from one pack event, in tag order. */
+    fun extractRecipeCoordinates(event: NostrEvent): List<PackRecipeCoordinate> {
+        val seen = LinkedHashSet<String>()
+        return event.tags
+            .asSequence()
+            .filter { it.size >= 2 && it[0] == "a" }
+            .mapNotNull { parseRecipeCoordinate(it[1]) }
+            .map { PackRecipeCoordinate(kind = it.first, author = it.second, dTag = it.third) }
+            .filter { coord ->
+                val key = "${coord.kind}:${coord.author}:${coord.dTag}"
+                seen.add(key)
+            }
+            .toList()
+    }
+
+    /** Parse one pack summary for detail/listing surfaces. */
+    fun parseSummary(event: NostrEvent): RecipePackSummary? = parsePackSummary(event)
+
     private data class AuthorScopedFilter(
         val author: String,
         val filter: Filter,
@@ -312,6 +369,26 @@ class RecipePackRepository(
         return dedupeNewestPerPackCoordinate(events)
     }
 
+    private fun cachedPackEventByCoordinate(author: String, dTag: String): NostrEvent? {
+        val fromCache = PackFormats.active.asSequence()
+            .mapNotNull { eventRepo.findAddressableEvent(it.kind, author, dTag) }
+            .firstOrNull { eventHasDTag(it, dTag) }
+
+        val fromDb = eventRepo.eventPersistence
+            ?.let { persistence ->
+                PackFormats.active.flatMap { persistence.getEventsByAuthorAndKind(author, it.kind, limit = 200) }
+                    .filter { eventHasDTag(it, dTag) }
+            }
+            .orEmpty()
+
+        return dedupeNewestPerPackCoordinate(
+            buildList {
+                fromCache?.let(::add)
+                addAll(fromDb)
+            }
+        ).firstOrNull()
+    }
+
     private fun cachedSavedListEvent(author: String, limit: Int = CACHE_LIMIT): NostrEvent? {
         eventRepo.findAddressableEvent(Nip51.KIND_BOOKMARK_SET, author, SAVED_PACKS_DTAG)?.let { return it }
         val persistence = eventRepo.eventPersistence ?: return null
@@ -329,6 +406,11 @@ class RecipePackRepository(
             .map { it[1].trim().lowercase() }
             .toSet()
         return "zap-cooking" in tags && "recipe-pack" in tags
+    }
+
+    private fun eventHasDTag(event: NostrEvent, dTag: String): Boolean {
+        val needle = dTag.trim()
+        return event.tags.any { it.size >= 2 && it[0] == "d" && it[1].trim() == needle }
     }
 
     private fun sanitizeAndSort(events: List<NostrEvent>): List<RecipePackSummary> {
