@@ -28,7 +28,7 @@ interface PackFormat {
 data class PackKey(val author: String, val dTag: String)
 
 fun packKey(event: NostrEvent): PackKey {
-    val d = event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1) ?: ""
+    val d = event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)?.trim().orEmpty()
     return PackKey(author = event.pubkey, dTag = d)
 }
 

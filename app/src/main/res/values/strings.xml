@@ -618,10 +618,10 @@
     <string name="error_relay_broadcast">Relay list broadcast</string>
     <string name="error_broadcast_failed">Failed to broadcast</string>
     <string name="error_no_results_found">No results found</string>
-    <string name="error_no_recipe_packs_found">No recipe packs found.</string>
-    <string name="error_no_recipe_packs_mine">You have not published any packs.</string>
-    <string name="error_no_recipe_packs_saved">No saved packs yet.</string>
-    <string name="error_sign_in_packs_tab">Sign in to view this tab.</string>
+    <string name="error_no_recipe_packs_found">No recipe packs found</string>
+    <string name="error_no_recipe_packs_mine">You have not published any packs</string>
+    <string name="error_no_recipe_packs_saved">No saved packs yet</string>
+    <string name="error_sign_in_packs_tab">Sign in to view this tab</string>
     <string name="error_search_hint">Search recipes, people, and notes</string>
     <string name="error_no_notifications">No notifications yet</string>
     <string name="error_no_messages">No messages yet</string>

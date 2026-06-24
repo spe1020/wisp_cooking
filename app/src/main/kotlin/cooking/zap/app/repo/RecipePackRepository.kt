@@ -5,6 +5,7 @@ import cooking.zap.app.nostr.Filter
 import cooking.zap.app.nostr.Nip51
 import cooking.zap.app.nostr.NostrEvent
 import cooking.zap.app.nostr.PackFormats
+import cooking.zap.app.nostr.RecipeFormats
 import cooking.zap.app.nostr.packKey
 import cooking.zap.app.relay.RelayConfig
 import cooking.zap.app.relay.RelayPool
@@ -12,6 +13,7 @@ import cooking.zap.app.relay.SubscriptionManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +44,7 @@ class RecipePackRepository(
     companion object {
         private const val PAGE_LIMIT = 60
         private const val SAVED_PACKS_DTAG = "zapcooking-saved-packs"
+        private val RECIPE_KINDS = RecipeFormats.active.map { it.kind }.toSet()
     }
 
     private val _discoverPacks = MutableStateFlow<List<RecipePackSummary>>(emptyList())
@@ -185,9 +188,10 @@ class RecipePackRepository(
             }
         } finally {
             collector.cancel()
+            collector.cancelAndJoin()
             subManager.closeSubscription(subId)
         }
-        return collected
+        return collected.toList()
     }
 
     private fun sanitizeAndSort(events: List<NostrEvent>): List<RecipePackSummary> {
@@ -204,7 +208,7 @@ class RecipePackRepository(
             .asSequence()
             .filter { it.size >= 2 && it[0] == "a" }
             .map { it[1] }
-            .filter { parseSavedPackCoordinate(it) != null }
+            .filter { parseRecipeCoordinate(it) != null }
             .toList()
         if (recipeATags.isEmpty()) return null
         val title = event.tags.firstOrNull { it.size >= 2 && it[0] == "title" }?.get(1)?.trim()
@@ -233,6 +237,17 @@ class RecipePackRepository(
         val dTag = parts[2].trim()
         if (pubkey.isBlank() || dTag.isBlank()) return null
         return pubkey to dTag
+    }
+
+    private fun parseRecipeCoordinate(raw: String): Triple<Int, String, String>? {
+        val parts = raw.split(":", limit = 3)
+        if (parts.size != 3) return null
+        val kind = parts[0].toIntOrNull() ?: return null
+        if (kind !in RECIPE_KINDS) return null
+        val pubkey = parts[1].trim()
+        val dTag = parts[2].trim()
+        if (pubkey.isBlank() || dTag.isBlank()) return null
+        return Triple(kind, pubkey, dTag)
     }
 }
 
