@@ -60,8 +60,7 @@ object RecipeTagCatalog {
 
     fun byTag(tag: String): RecipeTag? = byTag[tag.trim().lowercase()]
 
-    val popularRecipeTags: List<RecipeTag>
-        get() = popularTagKeys.mapNotNull { byTag[it] }
+    val popularRecipeTags: List<RecipeTag> = popularTagKeys.mapNotNull { byTag[it] }
 
     fun search(query: String): List<RecipeTag> {
         val needle = query.trim().lowercase()
