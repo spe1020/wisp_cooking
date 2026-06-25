@@ -56,6 +56,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -131,17 +133,17 @@ fun DmListScreen(
         },
         floatingActionButton = {
             Box {
-                FloatingActionButton(
+                cooking.zap.app.ui.component.ZapGradientFab(
                     onClick = {
                         if (selectedTab == 1) onNewGroupDm()
                         else showFabMenu = true
                     },
-                    containerColor = MaterialTheme.colorScheme.primary
+                    contentDescription = null
                 ) {
                     if (selectedTab == 1) {
-                        Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm))
+                        Icon(Icons.Outlined.GroupAdd, contentDescription = stringResource(R.string.cd_new_group_dm), tint = Color.White)
                     } else {
-                        Icon(Icons.Outlined.Add, contentDescription = stringResource(R.string.cd_group_actions))
+                        Icon(painterResource(R.drawable.ic_fab_plus), contentDescription = stringResource(R.string.cd_group_actions), tint = Color.White)
                     }
                 }
                 if (selectedTab == 0) {

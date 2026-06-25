@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="382"
+    android:viewportHeight="382">
+    <!-- Lightning bolt. Solid fill so it can be tinted (set to the bar background
+         color for a cutout look). -->
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M256.47,170.22C255.44,168.04 253.31,166.69 250.9,166.69H208.99L208.79,166.43L225.04,103.91C225.78,101.04 224.51,98.2101 221.87,96.8701C219.23,95.5301 216.2,96.1601 214.32,98.4501L125.94,206.16C124.41,208.02 124.1,210.53 125.13,212.7C126.16,214.88 128.29,216.23 130.7,216.23H172.61L172.81,216.49L156.56,279.01C155.82,281.88 157.09,284.71 159.73,286.05C160.65,286.52 161.62,286.75 162.57,286.75C164.34,286.75 166.06,285.96 167.28,284.47L255.66,176.76C257.19,174.9 257.5,172.39 256.47,170.22Z"/>
+</vector>

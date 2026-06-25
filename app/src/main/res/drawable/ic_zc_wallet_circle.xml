@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="382"
+    android:viewportHeight="382">
+    <!-- Inner gradient disc: red (#FF0C1C) bottom → orange (#FFAA00) top. Constant in
+         both states; rendered with tint = Color.Unspecified so the gradient shows. -->
+    <path
+        android:pathData="M190.999,60C263.386,60.2119 321.999,118.78 321.999,191C321.999,263.221 263.386,321.788 190.999,322C118.613,321.787 60,263.22 60,191C60.0002,118.78 118.613,60.2127 190.999,60Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="191.389"
+                android:startY="322.005"
+                android:endX="191.389"
+                android:endY="59.9957">
+                <item android:offset="0" android:color="#FFFF0C1C"/>
+                <item android:offset="1" android:color="#FFFFAA00"/>
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

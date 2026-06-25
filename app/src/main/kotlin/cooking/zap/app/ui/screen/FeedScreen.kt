@@ -755,14 +755,12 @@ fun FeedScreen(
                         ),
                         label = "fabAlpha"
                     )
-                    FloatingActionButton(
+                    cooking.zap.app.ui.component.ZapGradientFab(
                         onClick = onCompose,
-                        shape = CircleShape,
-                        containerColor = MaterialTheme.colorScheme.primary,
+                        contentDescription = stringResource(R.string.cd_new_post),
+                        icon = Icons.Default.Edit,
                         modifier = Modifier.graphicsLayer { alpha = fabAlpha }
-                    ) {
-                        Icon(Icons.Default.Edit, contentDescription = "New post")
-                    }
+                    )
                 }
             }
         ) { padding ->

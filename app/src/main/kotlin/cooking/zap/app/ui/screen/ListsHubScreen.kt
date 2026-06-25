@@ -138,12 +138,10 @@ fun ListsHubScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(
+            cooking.zap.app.ui.component.ZapGradientFab(
                 onClick = { showCreateDialog = true },
-                containerColor = MaterialTheme.colorScheme.primary
-            ) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.btn_create))
-            }
+                contentDescription = stringResource(R.string.btn_create)
+            )
         }
     ) { padding ->
         LazyColumn(

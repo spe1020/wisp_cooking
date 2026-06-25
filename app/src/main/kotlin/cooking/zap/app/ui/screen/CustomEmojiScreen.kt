@@ -56,9 +56,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
+import cooking.zap.app.R
 import cooking.zap.app.nostr.CustomEmoji
 import cooking.zap.app.nostr.EmojiSet
 import cooking.zap.app.repo.CustomEmojiRepository
@@ -104,9 +106,10 @@ fun CustomEmojiScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showCreateSetDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Create Emoji Set")
-            }
+            cooking.zap.app.ui.component.ZapGradientFab(
+                onClick = { showCreateSetDialog = true },
+                contentDescription = stringResource(R.string.cd_create_emoji_set)
+            )
         }
     ) { padding ->
         LazyColumn(
