@@ -60,7 +60,30 @@ Standard BIP39 over the 16 bytes of entropy:
 Both platforms should validate the mnemonic with the same checksum logic
 before persisting.
 
-### 1.3 Reference values for testing
+### 1.3 Salt — why "wisp-spark-wallet-v1" is intentional
+
+The salt is **not a rebrand oversight**. It was deliberately retained after
+evaluating three alternatives:
+
+- `"zapcooking-spark-wallet-v1"` — clean Zap Cooking branding, but a user
+  signing in with the same nsec on Wisp and Zap Cooking would get different
+  wallets. Funds could silently land on whichever derivation the other app
+  uses, with no obvious path to reconcile them.
+- `"nostr-spark-wallet-v1"` — neutral, could have become a de-facto
+  cross-app standard. Rejected: Wisp has already shipped `wisp-spark-wallet-v1`
+  in two apps (iOS and Android) with live users, so they cannot migrate.
+  Using a different neutral salt would still produce Wisp/Zap-Cooking
+  fragmentation.
+- `"wisp-spark-wallet-v1"` — keeps wallets identical across Wisp and Zap
+  Cooking for any shared nsec. **This is the chosen approach.** Zap Cooking
+  is a fork of Wisp and shares the same derivation scheme.
+
+Consequence: any Nostr user whose nsec has ever been used on Wisp (iOS or
+Android) will find their existing Spark wallet — same balance, same Lightning
+address — when they open Zap Cooking for the first time. No migration, no
+relay backup needed, no funds split.
+
+### 1.5 Reference values for testing
 
 Both platforms must produce these exact vectors. If either diverges,
 the derivation contract has broken — go back to §1.1 and audit the
@@ -86,6 +109,43 @@ Vector 2:
 Android regression: `app/src/test/kotlin/com/wisp/app/nostr/SparkDerivationTest.kt`
 runs both vectors on every `:app:testDebugUnitTest` invocation. iOS
 should add an equivalent XCTest with the same hardcoded expectations.
+
+### 1.6 Web app cross-compatibility (zapcooking.com)
+
+The zapcooking.com web app does **not** use HKDF derivation. Web users are
+not expected to paste their nsec into a browser, so the web app generates a
+**random BIP39 mnemonic** (`generateMnemonic(128)`) on first Spark setup,
+stores it in localStorage encrypted with NIP-44 self-encrypt, and publishes
+a relay backup immediately.
+
+This means the same nsec produces **different wallets** on web vs. Android/iOS
+by default. The bridge is the **NIP-78 relay backup**:
+
+- Web backs up its random mnemonic as a kind 30078 event.
+- Android/iOS can restore from that backup via the "Restore from relays"
+  flow, giving the user their web wallet on mobile.
+- Conversely, Android/iOS users who tap "Use my default wallet" can publish
+  their HKDF-derived mnemonic to relays, which the web app can then restore.
+
+The backup format is byte-for-byte compatible across web and mobile:
+
+| Field | Value |
+|---|---|
+| Kind | `30078` (NIP-78) |
+| d-tag | `spark-wallet-backup:{walletId}` |
+| `walletId` | first 16 hex chars of SHA-256(normalized mnemonic) |
+| Content | NIP-44 encrypted mnemonic, self-encrypted to user's own pubkey |
+| Normalization | `trim().toLowerCase().replace(/\s+/, ' ')` |
+
+Both web (`getSparkWalletId`) and Android (`Nip78.computeWalletId`) use the
+identical algorithm, so backup events written by either platform are readable
+by the other.
+
+The deliberate design choice: **Android/iOS are the primary wallet platforms**
+(nsec held locally, HKDF derivation, no seed phrase to write down). The web
+app is a secondary surface that bridges via relay backup. Users who exclusively
+use the web app and never touch mobile have a separate random wallet — that is
+acceptable and expected.
 
 ---
 
@@ -653,6 +713,7 @@ prompt can live anywhere in the app and still hand off correctly.
 
 | Decision | Choice | Why |
 |---|---|---|
+| HKDF salt | **`"wisp-spark-wallet-v1"`** — do not change | Wisp has shipped this salt in two apps with live users. A different salt (even a neutral one) creates wallet fragmentation between Wisp and Zap Cooking for any shared nsec. See §1.3. |
 | Auto-connect Spark on sign-in? | **No** — deferred until Wallet tab | Avoid network surprise at login; both platforms behave the same. |
 | Username algorithm parity | Match wordlists + format; randomness need not match | A given user only generates once; existing addresses are fetched from Spark on either platform. |
 | Re-derivation after "Switch Wallet" | Manual only (set `skipAutoCreate`) | Avoid the "I disconnected, why is it back?" footgun. |

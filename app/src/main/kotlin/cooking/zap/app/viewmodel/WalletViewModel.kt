@@ -25,6 +25,7 @@ import android.util.Log
 import cooking.zap.app.repo.WalletTransaction
 import cooking.zap.app.repo.ZapSender
 import cooking.zap.app.relay.RelayPool
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -79,6 +80,13 @@ sealed class AutoCheckState {
     data class Found(val mnemonic: String, val walletId: String?, val createdAt: Long) : AutoCheckState()
     data class MultipleFound(val backups: List<BackupEntry>) : AutoCheckState()
     object NotFound : AutoCheckState()
+}
+
+sealed class NwcRestoreState {
+    object Idle : NwcRestoreState()
+    object Checking : NwcRestoreState()
+    data class Found(val connectionString: String, val createdAt: Long) : NwcRestoreState()
+    object NotFound : NwcRestoreState()
 }
 
 sealed class FeeState {
@@ -253,6 +261,10 @@ class WalletViewModel(
     // Auto-check for relay backup on SparkSetup entry
     private val _autoCheckState = MutableStateFlow<AutoCheckState>(AutoCheckState.Idle)
     val autoCheckState: StateFlow<AutoCheckState> = _autoCheckState
+
+    // Auto-check for NWC backup on NwcSetup entry
+    private val _nwcRestoreState = MutableStateFlow<NwcRestoreState>(NwcRestoreState.Idle)
+    val nwcRestoreState: StateFlow<NwcRestoreState> = _nwcRestoreState
 
     // Per-relay backup status
     private val _relayBackupStatuses = MutableStateFlow<List<RelayBackupInfo>>(emptyList())
@@ -464,10 +476,95 @@ class WalletViewModel(
 
     fun selectNwcMode() {
         navigateTo(WalletPage.NwcSetup)
+        autoCheckNwcBackup()
     }
 
     fun selectSparkMode() {
         navigateTo(WalletPage.SparkSetup)
+    }
+
+    private fun autoCheckNwcBackup() {
+        val signer = buildSigner() ?: return
+        _nwcRestoreState.value = NwcRestoreState.Checking
+        viewModelScope.launch {
+            try {
+                relayPool.ensureWriteRelaysConnected()
+                val pubkey = signer.pubkeyHex
+                val subId = "nwc-restore-${System.currentTimeMillis()}"
+                val filter = Filter(
+                    kinds = listOf(Nip78.KIND),
+                    authors = listOf(pubkey),
+                    dTags = listOf("zapcooking-nwc-backup")
+                )
+                val seenEventIds = mutableSetOf<String>()
+                val events = mutableListOf<NostrEvent>()
+                var eoseCount = 0
+                val collectJob = launch {
+                    relayPool.relayEvents.collect { relayEvent: RelayEvent ->
+                        if (relayEvent.subscriptionId == subId && seenEventIds.add(relayEvent.event.id)) {
+                            events.add(relayEvent.event)
+                        }
+                    }
+                }
+                val eoseJob = launch {
+                    relayPool.eoseSignals.collect { id ->
+                        if (id == subId) eoseCount++
+                    }
+                }
+                try {
+                    yield()
+                    val allCount = relayPool.getRelayUrls().size
+                    relayPool.sendToAll(ClientMessage.req(subId, filter))
+
+                    withTimeoutOrNull(8_000) {
+                        while (eoseCount < allCount) {
+                            delay(200)
+                            if (eoseCount >= (allCount * 2 + 2) / 3) break
+                        }
+                    }
+                } finally {
+                    collectJob.cancel()
+                    eoseJob.cancel()
+                    relayPool.closeOnAllRelays(subId)
+                }
+
+                val latest = events
+                    .filter { !Nip78.isDeletedBackup(it) }
+                    .maxByOrNull { it.created_at }
+
+                if (latest == null) {
+                    _nwcRestoreState.value = NwcRestoreState.NotFound
+                    return@launch
+                }
+
+                val decrypted = try {
+                    withContext(Dispatchers.Default) {
+                        signer.nip44Decrypt(latest.content, latest.pubkey)
+                    }
+                } catch (_: Exception) { null }
+
+                if (decrypted != null &&
+                    (decrypted.startsWith("nostr+walletconnect://") || decrypted.startsWith("nostrwalletconnect://"))) {
+                    _nwcRestoreState.value = NwcRestoreState.Found(decrypted, latest.created_at)
+                } else {
+                    _nwcRestoreState.value = NwcRestoreState.NotFound
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                _nwcRestoreState.value = NwcRestoreState.NotFound
+            }
+        }
+    }
+
+    fun acceptNwcRestore() {
+        val state = _nwcRestoreState.value as? NwcRestoreState.Found ?: return
+        _nwcRestoreState.value = NwcRestoreState.Idle
+        connectNwcWallet(state.connectionString)
+    }
+
+    fun dismissNwcRestore() {
+        _nwcRestoreState.value = NwcRestoreState.Idle
     }
 
     private fun autoCheckRelayBackup() {
