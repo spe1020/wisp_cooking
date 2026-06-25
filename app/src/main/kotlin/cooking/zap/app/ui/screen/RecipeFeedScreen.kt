@@ -178,10 +178,9 @@ fun RecipeFeedScreen(
         },
         floatingActionButton = {
             onCreateRecipe?.let {
-                ExtendedFloatingActionButton(
+                cooking.zap.app.ui.component.ZapGradientFab(
                     onClick = it,
-                    icon = { Icon(Icons.Filled.Add, contentDescription = null) },
-                    text = { Text("Create recipe") },
+                    contentDescription = "Create recipe"
                 )
             }
         },

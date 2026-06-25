@@ -104,9 +104,10 @@ fun CustomEmojiScreen(
             )
         },
         floatingActionButton = {
-            FloatingActionButton(onClick = { showCreateSetDialog = true }) {
-                Icon(Icons.Default.Add, contentDescription = "Create Emoji Set")
-            }
+            cooking.zap.app.ui.component.ZapGradientFab(
+                onClick = { showCreateSetDialog = true },
+                contentDescription = "Create Emoji Set"
+            )
         }
     ) { padding ->
         LazyColumn(

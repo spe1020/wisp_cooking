@@ -230,7 +230,7 @@ fun SplashScreen(
             )
 
             Icon(
-                painter = painterResource(R.drawable.ic_wisp_logo),
+                painter = painterResource(R.drawable.ic_wisp_logo_splash),
                 contentDescription = stringResource(R.string.cd_wisp_logo),
                 tint = Color.Unspecified,
                 modifier = Modifier
@@ -260,8 +260,10 @@ fun SplashScreen(
             Spacer(Modifier.height(20.dp))
 
             Icon(
-                painter = painterResource(R.drawable.ic_zc_wordmark),
+                painter = painterResource(R.drawable.ic_zc_wordmark_splash),
                 contentDescription = stringResource(R.string.cd_wisp_logo),
+                // Always-white wordmark variant (keeps the gradient dot) so it stays
+                // legible on the dark splash regardless of system light/dark mode.
                 tint = Color.Unspecified,
                 modifier = Modifier
                     .fillMaxWidth(0.72f)
@@ -280,7 +282,7 @@ fun SplashScreen(
                 color = Color.White
             )
 
-            Spacer(Modifier.height(48.dp))
+            Spacer(Modifier.height(120.dp))
 
             // Sign-in buttons
             Button(

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="382"
+    android:viewportHeight="382">
+    <!-- Outer ring (evenOdd donut). Solid fill so it can be tinted per state:
+         grey when inactive, white when active. -->
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M191,0C296.486,0 382,85.5136 382,191C382,296.486 296.486,382 191,382C85.5136,382 0,296.486 0,191C0,85.5136 85.5136,0 191,0ZM303.113,79.249C241.291,17.4375 141.07,17.4375 79.2578,79.249C17.446,141.071 17.446,241.294 79.2578,303.105C141.08,364.917 241.302,364.917 303.113,303.105C364.925,241.284 364.925,141.061 303.113,79.249Z"/>
+</vector>

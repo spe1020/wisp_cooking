@@ -10,9 +10,11 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -42,10 +44,14 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import cooking.zap.app.R
 import cooking.zap.app.Routes
 
 private val NavBarColor = Color(0xFF1F2937)
+// Unread badge — brand amber-400, lighter than the orange nav icons so it
+// reads as a distinct "alert" dot rather than blending into the iconography.
+private val UnreadDotColor = Color(0xFFFBBF24)
 private val NAV_HEIGHT = 50.dp
 private val BG_CIRCLE_SIZE = 74.dp  // background circle (perfect circle via requiredSize)
 private val ICON_SIZE = 53.dp       // zc logo inside the bg circle
@@ -53,7 +59,10 @@ private val SIDE_ICON_SIZE = 21.dp  // the four flanking nav icons
 // How far the circle's TOP edge rises above the nav bar top edge. The circle
 // center then sits at (PROTRUSION below its top) - i.e. lower PROTRUSION = circle
 // sits lower / more in line with the side icons.
-private val PROTRUSION = 10.dp
+// Must be >= BG_CIRCLE_SIZE - NAV_HEIGHT so the circle's bottom stays at/above the
+// bar's bottom edge. Going lower pushes the circle into the system navigation inset,
+// where the OS draws its nav bar over our app and crops the circle.
+private val PROTRUSION = 24.dp
 
 enum class BottomTab(
     val route: String,
@@ -99,78 +108,112 @@ fun WispBottomBar(
     val rightTabs = listOf(BottomTab.MESSAGES, BottomTab.NOTIFICATIONS)
     val useBolt = cooking.zap.app.ui.util.useBoltIcon()
 
-    Column {
-        // Box is exactly NAV_HEIGHT tall — the circle overflows upward via offset,
-        // so scrolling content is only padded by the bar rect, not the circle.
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .windowInsetsPadding(NavigationBarDefaults.windowInsets)
-                .height(NAV_HEIGHT)
-                .background(NavBarColor)
-        ) {
-            // Four nav items flanking the center slot
-            Row(
-                modifier = Modifier
-                    .fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                leftTabs.forEach { tab ->
-                    SideNavItem(
-                        tab = tab,
-                        selected = currentRoute == tab.route,
-                        hasUnread = when (tab) {
-                            BottomTab.FEED -> hasUnreadHome
-                            else -> false
-                        },
-                        isZapAnimating = isZapAnimating,
-                        isReplyAnimating = isReplyAnimating,
-                        notifSoundEnabled = notifSoundEnabled,
-                        useBolt = useBolt,
-                        modifier = Modifier.weight(1f),
-                        onTabSelected = onTabSelected
-                    )
-                }
-                // Center placeholder — same weight as one tab
-                Spacer(Modifier.weight(1f))
-                rightTabs.forEach { tab ->
-                    SideNavItem(
-                        tab = tab,
-                        selected = currentRoute == tab.route,
-                        hasUnread = when (tab) {
-                            BottomTab.MESSAGES -> hasUnreadMessages
-                            BottomTab.NOTIFICATIONS -> hasUnreadNotifications
-                            else -> false
-                        },
-                        isZapAnimating = isZapAnimating,
-                        isReplyAnimating = isReplyAnimating,
-                        notifSoundEnabled = notifSoundEnabled,
-                        useBolt = useBolt,
-                        modifier = Modifier.weight(1f),
-                        onTabSelected = onTabSelected
-                    )
-                }
-            }
-
-            // requiredSize forces a true 82x82 circle (ignoring the parent's NAV_HEIGHT
-            // constraint that would otherwise squash it to an oval). TopCenter puts the
-            // circle's top at the bar's top edge; -PROTRUSION lifts it up so only that
-            // much overflows above into the content area.
+    // Overlay container: the bar + nav-inset spacer in a Column, with the elevated
+    // circle drawn on TOP of all of it (so neither its top protrusion nor its
+    // bottom overflow gets clipped by the bar rect or the gesture-inset region).
+    Box(modifier = Modifier.fillMaxWidth()) {
+        Column {
+            // Nav bar rect — fixed height, side icons centered.
             Box(
                 modifier = Modifier
-                    .requiredSize(BG_CIRCLE_SIZE)
-                    .align(Alignment.TopCenter)
-                    .offset(y = -PROTRUSION)
-                    .clip(CircleShape)
+                    .fillMaxWidth()
+                    .height(NAV_HEIGHT)
                     .background(NavBarColor)
-                    .clickable { onTabSelected(BottomTab.WALLET) },
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    leftTabs.forEach { tab ->
+                        SideNavItem(
+                            tab = tab,
+                            selected = currentRoute == tab.route,
+                            hasUnread = when (tab) {
+                                BottomTab.FEED -> hasUnreadHome
+                                else -> false
+                            },
+                            isZapAnimating = isZapAnimating,
+                            isReplyAnimating = isReplyAnimating,
+                            notifSoundEnabled = notifSoundEnabled,
+                            useBolt = useBolt,
+                            modifier = Modifier.weight(1f),
+                            onTabSelected = onTabSelected
+                        )
+                    }
+                    // Center placeholder — same weight as one tab
+                    Spacer(Modifier.weight(1f))
+                    rightTabs.forEach { tab ->
+                        SideNavItem(
+                            tab = tab,
+                            selected = currentRoute == tab.route,
+                            hasUnread = when (tab) {
+                                BottomTab.MESSAGES -> hasUnreadMessages
+                                BottomTab.NOTIFICATIONS -> hasUnreadNotifications
+                                else -> false
+                            },
+                            isZapAnimating = isZapAnimating,
+                            isReplyAnimating = isReplyAnimating,
+                            notifSoundEnabled = notifSoundEnabled,
+                            useBolt = useBolt,
+                            modifier = Modifier.weight(1f),
+                            onTabSelected = onTabSelected
+                        )
+                    }
+                }
+            }
+            // Colored spacer reserving the system nav-bar inset. The elevated circle
+            // overflows downward onto this matching background instead of being
+            // clipped by the gesture-inset region.
+            Spacer(
+                Modifier
+                    .fillMaxWidth()
+                    .windowInsetsBottomHeight(WindowInsets.navigationBars)
+                    .background(NavBarColor)
+            )
+        }
+
+        // requiredSize forces a true circle (ignoring the bar's NAV_HEIGHT constraint
+        // that would otherwise squash it to an oval). Aligned to the bar's top edge
+        // and lifted by PROTRUSION; drawn last so it sits above the bar + spacer.
+        Box(
+            modifier = Modifier
+                .requiredSize(BG_CIRCLE_SIZE)
+                .align(Alignment.TopCenter)
+                .offset(y = -PROTRUSION)
+                .zIndex(1f)
+                .clip(CircleShape)
+                .background(NavBarColor)
+                .clickable { onTabSelected(BottomTab.WALLET) },
+            contentAlignment = Alignment.Center
+        ) {
+            // Three layers so each part can be tinted independently by state:
+            //  Active   → gradient disc, white bolt, white ring (full brand color)
+            //  Inactive → flat grey disc + grey ring (a flat tint overrides the
+            //             gradient), with the bolt as the bar background (cutout) —
+            //             a monochrome grey mark matching the other inactive icons.
+            val walletSelected = currentRoute == BottomTab.WALLET.route
+            val inactiveGrey = MaterialTheme.colorScheme.onSurfaceVariant
+            Box(
+                modifier = Modifier.size(ICON_SIZE),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_zc_wallet),
+                    painter = painterResource(R.drawable.ic_zc_wallet_circle),
                     contentDescription = stringResource(R.string.nav_wallet),
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(ICON_SIZE)
+                    tint = if (walletSelected) Color.Unspecified else inactiveGrey,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Icon(
+                    painter = painterResource(R.drawable.ic_zc_wallet_bolt),
+                    contentDescription = null,
+                    tint = if (walletSelected) Color.White else NavBarColor,
+                    modifier = Modifier.fillMaxSize()
+                )
+                Icon(
+                    painter = painterResource(R.drawable.ic_zc_wallet_ring),
+                    contentDescription = null,
+                    tint = if (walletSelected) Color.White else inactiveGrey,
+                    modifier = Modifier.fillMaxSize()
                 )
             }
         }
@@ -237,7 +280,7 @@ private fun SideNavItem(
                         .size(8.dp)
                         .align(Alignment.TopEnd)
                         .offset(x = 2.dp, y = (-2).dp)
-                        .background(color = Color(0xFFFF3B30), shape = CircleShape)
+                        .background(color = UnreadDotColor, shape = CircleShape)
                 )
             }
 
@@ -344,7 +387,7 @@ private fun ReadOnlyBottomBar(
                                         .size(8.dp)
                                         .align(Alignment.TopEnd)
                                         .offset(x = 2.dp, y = (-2).dp)
-                                        .background(color = Color(0xFFFF3B30), shape = CircleShape)
+                                        .background(color = UnreadDotColor, shape = CircleShape)
                                 )
                             }
                             if (tab == BottomTab.NOTIFICATIONS) {
