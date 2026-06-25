@@ -187,7 +187,12 @@ class RecipeBookmarkRepository(
     }
 
     fun reset() {
+        // Cancel any in-flight load so a stale fetch can't repopulate state after
+        // an account switch.
+        loadJob?.cancel()
+        loadJob = null
         listEvent = null
+        _isLoading.value = false
         _bookmarkedCoordinates.value = emptySet()
     }
 

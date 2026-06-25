@@ -513,7 +513,8 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun toggleRecipeBookmark(eventId: String) {
         val event = eventRepo.getEvent(eventId) ?: return
-        viewModelScope.launch { recipeBookmarkRepo.toggle(event) }
+        // Off the Main dispatcher — toggle() reads ObjectBox and signs the event.
+        viewModelScope.launch(processingDispatcher) { recipeBookmarkRepo.toggle(event) }
     }
     /** Called after relay reconnect to re-subscribe notified group channels. */
     var onGroupReconnect: (() -> Unit)? = null
