@@ -755,13 +755,16 @@ fun WispNavHost(
                 onKeys = { closeDrawerAndNavigate(Routes.KEYS) },
                 onPowSettings = { closeDrawerAndNavigate(Routes.POW_SETTINGS) },
                 onConsole = { closeDrawerAndNavigate(Routes.CONSOLE) },
-                onRelayHealth = { closeDrawerAndNavigate(Routes.RELAY_HEALTH) },
                 connectedRelayCount = drawerConnectedCount,
                 onlineCount = drawerOnlinePubkeys.size,
                 onNetworkStatus = { closeDrawerAndNavigate(Routes.RELAY_HEALTH) },
                 onOnlineNow = {
-                    drawerScope.launch { drawerState.close() }
-                    showOnlineNowSheet = true
+                    // Close the drawer, THEN present the sheet in the same
+                    // coroutine so the modal doesn't overlap the drawer scrim.
+                    drawerScope.launch {
+                        drawerState.close()
+                        showOnlineNowSheet = true
+                    }
                 },
                 onRelaySettings = { closeDrawerAndNavigate(Routes.RELAYS) },
                 onInterfaceSettings = { closeDrawerAndNavigate(Routes.INTERFACE_SETTINGS) },
