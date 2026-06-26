@@ -2736,6 +2736,11 @@ fun WispNavHost(
             val recipeResolvedEmojis by feedViewModel.customEmojiRepo.resolvedEmojis.collectAsState()
             val recipeUnicodeEmojis by feedViewModel.customEmojiRepo.sortedUnicodeEmojis.collectAsState()
 
+            // A14 PR 3a: long-press the bookmark → list chooser (multi-membership).
+            val recipeCollections by feedViewModel.recipeBookmarkRepo.lists.collectAsState()
+            var showRecipeListChooser by remember { mutableStateOf(false) }
+            var recipeChooserEventId by remember { mutableStateOf<String?>(null) }
+
             LaunchedEffect(Unit) {
                 feedViewModel.zapSuccess.collect { eventId ->
                     recipeZapAnimatingIds = recipeZapAnimatingIds + eventId
@@ -2800,6 +2805,10 @@ fun WispNavHost(
                 // A14: recipe bookmarks go to the canonical kind-30001 list by
                 // coordinate (web-interop), not the generic note-bookmark dialog.
                 onAddToList = { eventId -> feedViewModel.toggleRecipeBookmark(eventId) },
+                onAddToListLongPress = { eventId ->
+                    recipeChooserEventId = eventId
+                    showRecipeListChooser = true
+                },
                 zapAnimatingIds = recipeZapAnimatingIds,
                 zapInProgressIds = recipeZapInProgress,
                 listedIds = recipeListedIds,
@@ -2809,6 +2818,24 @@ fun WispNavHost(
                 // Cook mode (onStartCooking) lands in 1.4 — null here, so no button renders.
                 onStartCooking = null
             )
+
+            if (showRecipeListChooser) {
+                val chooserEvent = recipeChooserEventId?.let { feedViewModel.eventRepo.getEvent(it) }
+                val chooserCoord = chooserEvent?.let {
+                    feedViewModel.recipeBookmarkRepo.coordinateForEvent(it)
+                }
+                cooking.zap.app.ui.component.RecipeListChooserSheet(
+                    lists = recipeCollections,
+                    recipeCoordinate = chooserCoord,
+                    onToggleList = { dTag ->
+                        recipeChooserEventId?.let { feedViewModel.toggleRecipeInList(dTag, it) }
+                    },
+                    onCreateList = { name ->
+                        recipeChooserEventId?.let { feedViewModel.createRecipeListAndSave(name, it) }
+                    },
+                    onDismiss = { showRecipeListChooser = false },
+                )
+            }
         }
 
         composable(Routes.RECIPES) {

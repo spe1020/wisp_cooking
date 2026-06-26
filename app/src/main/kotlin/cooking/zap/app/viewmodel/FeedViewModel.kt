@@ -519,6 +519,22 @@ class FeedViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
+     * Toggle a recipe's membership in a specific kind-30001 list (the list
+     * chooser; multi-membership). Off the Main dispatcher for the same reason as
+     * [toggleRecipeBookmark].
+     */
+    fun toggleRecipeInList(dTag: String, eventId: String) {
+        val event = eventRepo.getEvent(eventId) ?: return
+        viewModelScope.launch(processingDispatcher) { recipeBookmarkRepo.toggleRecipeInList(dTag, event) }
+    }
+
+    /** Create a new named collection from [title] and add [eventId]'s recipe to it. */
+    fun createRecipeListAndSave(title: String, eventId: String) {
+        val event = eventRepo.getEvent(eventId) ?: return
+        viewModelScope.launch(processingDispatcher) { recipeBookmarkRepo.createList(title, seedEvent = event) }
+    }
+
+    /**
      * A14 PR 2 — one-time, one-shot background migration of legacy kind-10003
      * recipe bookmarks into the canonical kind-30001 list, so existing Android
      * bookmarks sync to web. Idempotent: guarded by a per-user persisted flag
