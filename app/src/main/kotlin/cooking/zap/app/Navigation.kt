@@ -2788,16 +2788,21 @@ fun WispNavHost(
                 onBack = { navController.popBackStack() },
                 onShare = {
                     val event = recipeDetailEvent ?: return@RecipeDetailScreen
-                    val text = cooking.zap.app.nostr.RecipeShare.shareText(event) ?: return@RecipeDetailScreen
-                    val title = cooking.zap.app.nostr.RecipeShare.titleFor(event)
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, title)
-                        putExtra(Intent.EXTRA_TEXT, text)
-                    }
-                    recipeShareContext.startActivity(
-                        Intent.createChooser(intent, recipeShareContext.getString(R.string.btn_share))
-                    )
+                    // Mirror PostCard's note share: never let a malformed event or a
+                    // missing chooser target crash the screen.
+                    try {
+                        val text = cooking.zap.app.nostr.RecipeShare.shareText(event)
+                            ?: return@RecipeDetailScreen
+                        val title = cooking.zap.app.nostr.RecipeShare.titleFor(event)
+                        val intent = Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_SUBJECT, title)
+                            putExtra(Intent.EXTRA_TEXT, text)
+                        }
+                        recipeShareContext.startActivity(
+                            Intent.createChooser(intent, recipeShareContext.getString(R.string.btn_share))
+                        )
+                    } catch (_: Exception) {}
                 },
                 onProfileClick = { pubkey -> navController.navigate("profile/$pubkey") },
                 onHashtagClick = { tag ->
