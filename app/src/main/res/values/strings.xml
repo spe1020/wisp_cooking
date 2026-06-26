@@ -633,6 +633,10 @@
         <item quantity="one">%d recipe</item>
         <item quantity="other">%d recipes</item>
     </plurals>
+    <string name="recipe_list_chooser_title">Save to collection</string>
+    <string name="recipe_list_chooser_new">New list</string>
+    <string name="recipe_list_chooser_name_hint">Collection name</string>
+    <string name="recipe_list_chooser_empty">No collections yet</string>
     <string name="error_search_hint">Search recipes, people, and notes</string>
     <string name="error_no_notifications">No notifications yet</string>
     <string name="error_no_messages">No messages yet</string>
