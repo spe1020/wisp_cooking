@@ -237,7 +237,7 @@ class RecipeBookmarkRepository(
         if (dTag.isBlank() || dTag == DEFAULT_LIST_DTAG) return null
         return writeMutex.withLock {
             val author = signer.pubkeyHex
-            val base = listsByDTag[dTag] ?: cachedListEvent(author, dTag)
+            val base = listEventFor(dTag) ?: cachedListEvent(author, dTag)
             val nextCoords = LinkedHashSet(base?.let { parseCoordinates(it) } ?: emptySet())
             seedEvent?.let { ev -> coordinateForEvent(ev)?.let { nextCoords.add(it) } }
             val tags = buildListTags(base, dTag, isDefault = false, seedTitleIfNew = trimmed, nextCoords = nextCoords)
@@ -261,7 +261,7 @@ class RecipeBookmarkRepository(
         val signer = signerProvider() ?: return emptySet()
         return writeMutex.withLock {
             val author = signer.pubkeyHex
-            val base = listsByDTag[DEFAULT_LIST_DTAG] ?: cachedListEvent(author, DEFAULT_LIST_DTAG)
+            val base = listEventFor(DEFAULT_LIST_DTAG) ?: cachedListEvent(author, DEFAULT_LIST_DTAG)
             val currentCoords = base?.let { parseCoordinates(it) } ?: _bookmarkedCoordinates.value
             val nextCoords = LinkedHashSet(currentCoords)
             val added = coordinates.asSequence()
@@ -330,12 +330,13 @@ class RecipeBookmarkRepository(
         desired: Boolean?,
         seedTitleIfNew: String?,
     ): Boolean {
-        val signer = signerProvider() ?: return desired ?: false
+        val signer = signerProvider()
+        if (signer == null) return isCoordInList(dTag, coord)
         return writeMutex.withLock {
             val author = signer.pubkeyHex
             val isDefault = dTag == DEFAULT_LIST_DTAG
             // Refresh the carry-forward base from the newest we know (cache included).
-            val base = listsByDTag[dTag] ?: cachedListEvent(author, dTag)
+            val base = listEventFor(dTag) ?: cachedListEvent(author, dTag)
             val nextCoords = LinkedHashSet(base?.let { parseCoordinates(it) } ?: emptySet())
             val add = desired ?: !nextCoords.contains(coord)
             val changed = if (add) nextCoords.add(coord) else nextCoords.remove(coord)
@@ -574,8 +575,12 @@ class RecipeBookmarkRepository(
                     }
                 }
                 "t" -> {
-                    tags.add(tag.toList())
-                    if (tag.size >= 2 && tag[1].trim() in RECIPE_T_TAGS) hasRecipeT = true
+                    // The default Saved list must never carry a recipe `t` tag — the
+                    // web enumerates collections by `#t` and reads Saved by `#d`.
+                    if (!isDefault) {
+                        tags.add(tag.toList())
+                        if (tag.size >= 2 && tag[1].trim() in RECIPE_T_TAGS) hasRecipeT = true
+                    }
                 }
                 else -> tags.add(tag.toList()) // carry forward summary/image/cover/unknown
             }
@@ -589,8 +594,27 @@ class RecipeBookmarkRepository(
         return tags
     }
 
-    private fun dTagOf(event: NostrEvent): String? =
-        event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+    private fun listEventFor(dTag: String): NostrEvent? =
+        synchronized(listsLock) { listsByDTag[dTag] }
+
+    /** Current membership of [coord] in list [dTag] (in-memory, no network). */
+    private fun isCoordInList(dTag: String, coord: String): Boolean {
+        listEventFor(dTag)?.let { return parseCoordinates(it).contains(coord) }
+        if (dTag == DEFAULT_LIST_DTAG) return _bookmarkedCoordinates.value.contains(coord)
+        return _lists.value.firstOrNull { it.dTag == dTag }?.coordinates?.contains(coord) == true
+    }
+
+    /**
+     * Canonical `d`-tag for a recipe list event. Prefers [DEFAULT_LIST_DTAG] when
+     * present so [isRecipeList] (any matching `d`) and map keying stay aligned
+     * even on malformed multi-`d` events.
+     */
+    private fun dTagOf(event: NostrEvent): String? {
+        if (hasDTag(event, DEFAULT_LIST_DTAG)) return DEFAULT_LIST_DTAG
+        return event.tags
+            .firstOrNull { it.size >= 2 && it[0] == "d" }
+            ?.get(1)?.trim()?.takeIf { it.isNotBlank() }
+    }
 
     private fun hasDTag(event: NostrEvent, dTag: String): Boolean {
         val needle = dTag.trim()
