@@ -902,8 +902,10 @@ fun FeedScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            feedType == FeedType.ONLY_FOOD && onlyFoodWotDropped > 0 -> {
+                            feedType == FeedType.ONLY_FOOD && onlyFoodWotEnabled && onlyFoodWotDropped > 0 -> {
                                 // WoT removed everything we received — explain, don't show a silent blank.
+                                // Gated on onlyFoodWotEnabled so a stale drop count from a now-disabled
+                                // filter can't claim posts were hidden once the toggle is off.
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
                                         pluralStringResource(

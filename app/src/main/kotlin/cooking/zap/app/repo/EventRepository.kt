@@ -1538,7 +1538,7 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
      * [isWotFiltered]/wotFilterEnabled. NO-OPS when the social graph isn't ready, to
      * avoid an empty feed (mute + structural still apply).
      */
-    fun isOnlyFoodWotFiltered(pubkey: String): Boolean {
+    private fun isOnlyFoodWotFiltered(pubkey: String): Boolean {
         if (safetyPrefs?.onlyFoodWotEnabled?.value != true) return false
         val netRepo = extendedNetworkRepo ?: return false
         if (!netRepo.isNetworkReady()) return false  // empty-feed guard

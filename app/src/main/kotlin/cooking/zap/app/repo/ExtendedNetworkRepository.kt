@@ -22,6 +22,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Serializable
 data class ExtendedNetworkCache(
@@ -107,7 +108,7 @@ class ExtendedNetworkRepository(
         context.getSharedPreferences("wisp_food_seed", Context.MODE_PRIVATE)
     @Volatile private var foodSeedPubkeys: Set<String> =
         foodSeedPrefs.getStringSet("pubkeys", emptySet())?.toSet() ?: emptySet()
-    @Volatile private var foodSeedLoading = false
+    private val foodSeedLoading = AtomicBoolean(false)
 
     /** True if [pubkey] is one of the curator's follows (OnlyFood seed). */
     fun isInFoodSeed(pubkey: String): Boolean = pubkey in foodSeedPubkeys
@@ -118,8 +119,10 @@ class ExtendedNetworkRepository(
      * already loaded this process or persisted from a prior run.
      */
     suspend fun ensureFoodSeedLoaded() {
-        if (foodSeedPubkeys.isNotEmpty() || foodSeedLoading) return
-        foodSeedLoading = true
+        if (foodSeedPubkeys.isNotEmpty()) return
+        // Atomic compare-and-set: only the caller that flips false->true proceeds,
+        // so concurrent calls can't start overlapping subscriptions/collectors.
+        if (!foodSeedLoading.compareAndSet(false, true)) return
         val subId = "food-seed-k3"
         try {
             val msg = ClientMessage.req(subId, Filter(kinds = listOf(3), authors = listOf(ZC_CURATOR_PUBKEY)))
@@ -149,7 +152,7 @@ class ExtendedNetworkRepository(
         } finally {
             // Always close the sub — even on timeout/cancellation — so it stops collecting.
             relayPool.closeOnAllRelays(subId)
-            foodSeedLoading = false
+            foodSeedLoading.set(false)
         }
     }
 
