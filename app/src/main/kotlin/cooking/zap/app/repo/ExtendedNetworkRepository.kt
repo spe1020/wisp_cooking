@@ -113,6 +113,9 @@ class ExtendedNetworkRepository(
     /** True if [pubkey] is one of the curator's follows (OnlyFood seed). */
     fun isInFoodSeed(pubkey: String): Boolean = pubkey in foodSeedPubkeys
 
+    /** The curator's follow set (OnlyFood seed). Empty until [ensureFoodSeedLoaded]. */
+    fun getFoodSeedPubkeys(): Set<String> = foodSeedPubkeys
+
     /**
      * Fetch the zap.cooking curator's kind-3 contact list ONCE and cache its
      * p-tags as the OnlyFood food seed. Cheap (single-author kind-3); no-op if
