@@ -690,16 +690,9 @@ fun FeedScreen(
                                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                                         }} else null
                                     )
-                                    DropdownMenuItem(
-                                        text = { Text(stringResource(R.string.tab_list)) },
-                                        onClick = {
-                                            showFeedTypeDropdown = false
-                                            showListPicker = true
-                                        },
-                                        trailingIcon = if (feedType == FeedType.LIST) {{
-                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        }} else null
-                                    )
+                                    // "List" feed-type entry removed from the dropdown.
+                                    // FeedType.LIST and its picker remain functional; only
+                                    // the menu entry is hidden here.
                                     DropdownMenuItem(
                                         text = { Text(stringResource(R.string.tab_hashtags)) },
                                         onClick = {

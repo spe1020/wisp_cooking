@@ -442,43 +442,10 @@ fun WispDrawerContent(
                 modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
             )
         }
-        NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.Restaurant, contentDescription = null) },
-            label = { Text(stringResource(R.string.drawer_recipes)) },
-            selected = false,
-            onClick = onRecipes,
-            modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
-        )
-        NavigationDrawerItem(
-            // Sous Chef = sparkle in the web's purple accent (#a855f7). The web
-            // uses a generic sparkle glyph (no bespoke mark), so this matches it.
-            icon = { Icon(Icons.Outlined.AutoAwesome, contentDescription = null, tint = SousChefPurple) },
-            label = { Text(stringResource(R.string.drawer_souschef)) },
-            selected = false,
-            onClick = onSousChef,
-            modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
-        )
-        NavigationDrawerItem(
-            icon = { CheffyIcon(size = 24.dp) },
-            label = { Text(stringResource(R.string.drawer_cheffy)) },
-            selected = false,
-            onClick = onCheffy,
-            modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
-        )
-        NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.Forum, contentDescription = null) },
-            label = { Text(stringResource(R.string.drawer_onlyfood)) },
-            selected = false,
-            onClick = onOnlyFood,
-            modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
-        )
-        NavigationDrawerItem(
-            icon = { Icon(Icons.Outlined.FormatListBulleted, contentDescription = null) },
-            label = { Text(stringResource(R.string.drawer_lists)) },
-            selected = false,
-            onClick = onLists,
-            modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
-        )
+        // Recipes, Sous Chef, Cheffy, OnlyFood, and Lists drawer entries were
+        // removed from the menu. The functionality and callbacks remain wired
+        // (onRecipes/onSousChef/onCheffy/onOnlyFood/onLists) — only their
+        // appearance here is hidden.
         NavigationDrawerItem(
             icon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
             label = { Text(stringResource(R.string.drawer_drafts)) },
