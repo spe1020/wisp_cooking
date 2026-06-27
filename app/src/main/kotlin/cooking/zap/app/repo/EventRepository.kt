@@ -1411,6 +1411,73 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         }
     }
 
+    /**
+     * Ingestion choke-point for the OnlyFood hashtag feed (FeedType.ONLY_FOOD).
+     * Shares the isolated [relayFeedList] display with RELAY/TRENDING, but unlike
+     * [addRelayFeedEvent] it also applies the muted-word filter, so the full set
+     * the standalone OnlyFood screen lacked is centralized here:
+     * future-timestamp, mute (pubkey + word + thread), deleted-event, and
+     * de-dup (via [relayFeedBinaryInsert]'s [relayFeedIds]).
+     *
+     * Dedup uses the relay-feed-local [relayFeedIds] rather than the global
+     * [seenEventIds] on purpose: sharing the global set with the author-based
+     * main feed would make each event land in only one of the two lists
+     * (whichever arrived first), starving the other. The local set still
+     * prevents an event from appearing twice within OnlyFood.
+     *
+     * This is also the single hook for PR 2's WoT + structural spam layer.
+     * Mirrors the web's kind set [1, 6, 1068] (notes, reposts, polls).
+     */
+    fun addHashtagFeedEvent(event: NostrEvent) {
+        if (event.created_at > System.currentTimeMillis() / 1000 + 30) return
+        if (muteRepo?.isBlocked(event.pubkey) == true) return
+        if (deletedEventsRepo?.isDeleted(event.id) == true) return
+
+        when (event.kind) {
+            1 -> {
+                if (muteRepo?.containsMutedWord(event.content) == true) return
+                val threadRoot = Nip10.getRootId(event) ?: Nip10.getReplyTarget(event) ?: event.id
+                if (muteRepo?.isThreadMuted(threadRoot) == true) return
+                val isReply = Nip10.isReply(event)
+                if (!isReply) {
+                    eventCache[event.id] = event
+                    relayHintStore?.extractHintsFromTags(event)
+                    relayFeedBinaryInsert(event)
+                }
+            }
+            Nip88.KIND_POLL -> {
+                if (muteRepo?.containsMutedWord(event.content) == true) return
+                eventCache[event.id] = event
+                relayHintStore?.extractHintsFromTags(event)
+                relayFeedBinaryInsert(event)
+            }
+            6 -> {
+                if (event.content.isNotBlank()) {
+                    try {
+                        val inner = NostrEvent.fromJson(event.content)
+                        if (muteRepo?.isBlocked(inner.pubkey) == true) return
+                        if (muteRepo?.containsMutedWord(inner.content) == true) return
+                        val authors = repostAuthors.get(inner.id)
+                            ?: ConcurrentHashMap.newKeySet<String>().also { repostAuthors.put(inner.id, it) }
+                        authors.add(event.pubkey)
+                        if (event.pubkey == currentUserPubkey) {
+                            userReposts.put(inner.id, true)
+                        }
+                        repostDirty = true
+                        markVersionDirty()
+                        val isReply = Nip10.isReply(inner)
+                        if (!isReply) {
+                            eventCache[inner.id] = inner
+                            relayHintStore?.extractHintsFromTags(inner)
+                            feedSortTime.put(inner.id, event.created_at)
+                            relayFeedBinaryInsert(inner, sortTime = event.created_at)
+                        }
+                    } catch (_: Exception) {}
+                }
+            }
+        }
+    }
+
     private fun trendingFeedAppend(event: NostrEvent) {
         synchronized(relayFeedList) {
             if (!relayFeedIds.add(event.id)) return

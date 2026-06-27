@@ -594,6 +594,7 @@ fun FeedScreen(
                                                     selectedList!!.name
                                                 } else stringResource(R.string.tab_list)
                                                 FeedType.TRENDING -> stringResource(R.string.tab_trending)
+                                                FeedType.ONLY_FOOD -> stringResource(R.string.tab_onlyfood)
                                             }
                                             Text(
                                                 feedLabel,
@@ -656,6 +657,16 @@ fun FeedScreen(
                                             viewModel.setFeedType(FeedType.TRENDING)
                                         },
                                         trailingIcon = if (feedType == FeedType.TRENDING) {{
+                                            Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        }} else null
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text(stringResource(R.string.tab_onlyfood)) },
+                                        onClick = {
+                                            showFeedTypeDropdown = false
+                                            viewModel.setFeedType(FeedType.ONLY_FOOD)
+                                        },
+                                        trailingIcon = if (feedType == FeedType.ONLY_FOOD) {{
                                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(18.dp))
                                         }} else null
                                     )
@@ -878,6 +889,12 @@ fun FeedScreen(
                                         FeedContentFilter.TEXT_ONLY -> "No notes in your feed yet"
                                         else -> "No posts yet"
                                     },
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            feedType == FeedType.ONLY_FOOD -> {
+                                Text(
+                                    "No food posts yet — pull to refresh",
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }

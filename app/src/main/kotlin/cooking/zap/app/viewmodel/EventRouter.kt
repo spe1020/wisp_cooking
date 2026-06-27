@@ -79,6 +79,7 @@ class EventRouter(
     private val getFeedSubId: () -> String,
     private val getRelayFeedSubId: () -> String,
     private val getIsTrendingFeed: () -> Boolean,
+    private val getIsHashtagFeed: () -> Boolean,
     private val onRelayFeedEventReceived: () -> Unit
 ) {
     /**
@@ -530,7 +531,9 @@ class EventRouter(
             }
             if (isRelayFeedSub) {
                 eventRepo.cacheEvent(event)
-                if (getIsTrendingFeed()) {
+                if (getIsHashtagFeed()) {
+                    eventRepo.addHashtagFeedEvent(event)
+                } else if (getIsTrendingFeed()) {
                     eventRepo.addTrendingFeedEvent(event)
                 } else {
                     eventRepo.addRelayFeedEvent(event)
