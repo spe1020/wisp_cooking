@@ -23,6 +23,7 @@ import cooking.zap.app.R
 import cooking.zap.app.nostr.Nip19
 import cooking.zap.app.nostr.hexToByteArray
 import cooking.zap.app.repo.KeyRepository
+import cooking.zap.app.repo.SigningMode
 import cooking.zap.app.ui.component.PrivateKeyRevealSection
 import cooking.zap.app.ui.component.PublicKeyCard
 
@@ -82,17 +83,27 @@ fun KeysScreen(
             )
             Spacer(modifier = Modifier.height(4.dp))
 
-            if (keyRepository.isReadOnly()) {
-                Text(
-                    text = "No private key is stored on this device.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                PrivateKeyRevealSection(
-                    keypair = keypair,
-                    avatarUrl = avatarUrl
-                )
+            when (keyRepository.getSigningMode()) {
+                SigningMode.REMOTE -> {
+                    Text(
+                        text = stringResource(R.string.keys_remote_signer_info),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                SigningMode.READ_ONLY -> {
+                    Text(
+                        text = stringResource(R.string.keys_read_only_info),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                SigningMode.LOCAL -> {
+                    PrivateKeyRevealSection(
+                        keypair = keypair,
+                        avatarUrl = avatarUrl
+                    )
+                }
             }
         }
     }
