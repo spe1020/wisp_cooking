@@ -2,6 +2,7 @@ package cooking.zap.app.repo
 
 import android.util.Log
 import android.util.LruCache
+import cooking.zap.app.nostr.FoodHashtags
 import cooking.zap.app.nostr.Nip09
 import cooking.zap.app.nostr.Nip10
 import cooking.zap.app.nostr.Nip30
@@ -1577,6 +1578,28 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
         }
         _relayFeed.value = emptyList()
         _onlyFoodWotDropped.value = 0
+    }
+
+    /**
+     * Cache-first paint for the OnlyFood feed: pull persisted kind 1/6/1068 events,
+     * keep only those carrying a food `t`-tag, and route EACH through the shared
+     * [addHashtagFeedEvent] choke-point so mute + structural spam + WoT + dedup all
+     * apply. Runs off the main thread (ObjectBox query on IO) and is non-blocking —
+     * callers fire it then immediately subscribe relays to merge fresh events on top.
+     *
+     * The [FoodHashtags.hasFoodTag] pre-filter is REQUIRED: [addHashtagFeedEvent]
+     * does not itself check for a food tag (the relay path guarantees that via its
+     * `tTags` filter), so without it non-food cached kind-1 notes would leak in.
+     * Cached events dedup against live relay events via [relayFeedIds].
+     */
+    fun paintOnlyFoodFromCache(limit: Int = 500) {
+        val persistence = eventPersistence ?: return
+        scope.launch(Dispatchers.IO) {
+            val cached = persistence.getEventsByKinds(intArrayOf(1, 6, Nip88.KIND_POLL), limit)
+            for (event in cached) {
+                if (FoodHashtags.hasFoodTag(event)) addHashtagFeedEvent(event)
+            }
+        }
     }
 
     fun getOldestRelayFeedTimestamp(): Long? {

@@ -29,4 +29,20 @@ object FoodHashtags {
         "glutenfree", "dairyfree", "healthy", "nutrition", "nutritionist",
         "dietitian", "mealplan", "batchcooking",
     )
+
+    /** Lowercase membership set for O(1) [hasFoodTag] lookups. */
+    val ALL_SET: Set<String> = ALL.map { it.lowercase() }.toSet()
+
+    /**
+     * True when [event] carries a `t`-tag in [ALL_SET] (case-insensitive). Mirrors
+     * what the relay-side `tTags = FoodHashtags.ALL` filter matched, so the cache
+     * paint can replicate relay food-relevance before routing events through the
+     * shared OnlyFood choke-point.
+     */
+    fun hasFoodTag(event: NostrEvent): Boolean {
+        for (tag in event.tags) {
+            if (tag.size >= 2 && tag[0] == "t" && tag[1].lowercase() in ALL_SET) return true
+        }
+        return false
+    }
 }
