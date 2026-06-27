@@ -11,6 +11,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedCard
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
@@ -23,22 +24,9 @@ import cooking.zap.app.R
 import cooking.zap.app.nostr.Nip19
 import cooking.zap.app.nostr.hexToByteArray
 import cooking.zap.app.repo.KeyRepository
-<<<<<<< HEAD
 import cooking.zap.app.repo.SigningMode
-import cooking.zap.app.ui.component.QrCodeDialog
-
-private fun android.content.Context.findFragmentActivity(): FragmentActivity? {
-    var ctx = this
-    while (ctx is ContextWrapper) {
-        if (ctx is FragmentActivity) return ctx
-        ctx = ctx.baseContext
-    }
-    return null
-}
-=======
 import cooking.zap.app.ui.component.PrivateKeyRevealSection
 import cooking.zap.app.ui.component.PublicKeyCard
->>>>>>> origin/main
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -89,15 +77,15 @@ fun KeysScreen(
 
             Spacer(modifier = Modifier.height(24.dp))
 
-<<<<<<< HEAD
+            Text(
+                text = stringResource(R.string.settings_private_key),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
             when (keyRepository.getSigningMode()) {
                 SigningMode.REMOTE -> {
-                    Text(
-                        text = stringResource(R.string.settings_private_key),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
                     OutlinedCard(modifier = Modifier.fillMaxWidth()) {
                         Text(
                             text = stringResource(R.string.keys_remote_signer_info),
@@ -109,47 +97,17 @@ fun KeysScreen(
                 }
                 SigningMode.READ_ONLY -> {
                     Text(
-                        text = stringResource(R.string.settings_private_key),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
                         text = stringResource(R.string.keys_read_only_info),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 SigningMode.LOCAL -> {
-                    PrivateKeySection(
-                        nsec = nsec,
-                        onReveal = { nsec = it },
+                    PrivateKeyRevealSection(
                         keypair = keypair,
-                        revealPrivateKeyTitle = revealPrivateKeyTitle,
-                        revealPrivateKeyDescription = revealPrivateKeyDescription,
                         avatarUrl = avatarUrl
                     )
                 }
-=======
-            Text(
-                text = stringResource(R.string.settings_private_key),
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-
-            if (keyRepository.isReadOnly()) {
-                Text(
-                    text = "No private key is stored on this device.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                PrivateKeyRevealSection(
-                    keypair = keypair,
-                    avatarUrl = avatarUrl
-                )
->>>>>>> origin/main
             }
         }
     }
