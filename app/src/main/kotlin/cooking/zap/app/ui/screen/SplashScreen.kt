@@ -14,6 +14,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -26,9 +27,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
@@ -144,7 +147,8 @@ fun SplashScreen(
     authViewModel: AuthViewModel,
     onAccountCreated: () -> Unit,
     onLoggedIn: () -> Unit,
-    onContinueWithGoogle: () -> Unit
+    onContinueWithGoogle: () -> Unit,
+    onCancel: (() -> Unit)? = null
 ) {
     val foodPhotos by viewModel.foodPhotos.collectAsState()
 
@@ -199,6 +203,22 @@ fun SplashScreen(
                     )
                 )
         )
+
+        // Cancel pill — only shown when adding an account over an existing session
+        if (onCancel != null) {
+            Text(
+                text = "Cancel",
+                style = MaterialTheme.typography.labelLarge,
+                color = Color.White,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 120.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.15f))
+                    .clickable(onClick = onCancel)
+                    .padding(horizontal = 28.dp, vertical = 12.dp)
+            )
+        }
 
         // Content — centered as one block
         Column(
