@@ -316,7 +316,7 @@ class OnlyFoodFeedViewModel : ViewModel() {
         viewModelScope.launch {
             val global = stateOf(Mode.GLOBAL)
             if (global.seen.isNotEmpty()) return@launch
-            val cached = withContext(Dispatchers.Default) { d.eventRepo.cachedFoodNotes() }
+            val cached = withContext(Dispatchers.IO) { d.eventRepo.cachedFoodNotes() }
             var added = false
             for (event in cached) {
                 if (event.kind != 1 || event.id in global.seen) continue

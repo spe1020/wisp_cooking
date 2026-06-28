@@ -1681,19 +1681,23 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
      * recency-starved by non-food kind-1 notes. Best-effort: never throws.
      */
     fun cachedFoodNotes(limit: Int = 200): List<NostrEvent> {
-        val fromCache = eventCache.values.asSequence()
-            .filter { it.kind == 1 && FoodHashtags.hasFoodTag(it) }
-            .sortedByDescending { it.created_at }
-            .take(limit)
-            .toList()
-        if (fromCache.isNotEmpty()) return fromCache
-        val persistence = eventPersistence ?: return emptyList()
-        return persistence.getEventsByKind(1, limit = 5000)
-            .asSequence()
-            .filter { FoodHashtags.hasFoodTag(it) }
-            .sortedByDescending { it.created_at }
-            .take(limit)
-            .toList()
+        return try {
+            val fromCache = eventCache.values.asSequence()
+                .filter { it.kind == 1 && FoodHashtags.hasFoodTag(it) }
+                .sortedByDescending { it.created_at }
+                .take(limit)
+                .toList()
+            if (fromCache.isNotEmpty()) return fromCache
+            val persistence = eventPersistence ?: return emptyList()
+            persistence.getEventsByKind(1, limit = 5000)
+                .asSequence()
+                .filter { FoodHashtags.hasFoodTag(it) }
+                .sortedByDescending { it.created_at }
+                .take(limit)
+                .toList()
+        } catch (t: Throwable) {
+            emptyList()
+        }
     }
 
     fun getOldestRelayFeedTimestamp(): Long? {
