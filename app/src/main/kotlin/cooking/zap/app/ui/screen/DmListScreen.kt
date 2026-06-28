@@ -295,7 +295,9 @@ fun DmListScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    if (err.message.isNotBlank()) {
+                    // For the members-only create case the clean message above stands on its own;
+                    // only append the raw relay string for the generic rejection path.
+                    if (!isCreateMembersOnly && err.message.isNotBlank()) {
                         Spacer(Modifier.height(4.dp))
                         Text(
                             text = "Relay said: ${err.message}",
