@@ -322,7 +322,8 @@ fun GroupRoomScreen(
     }
 
     val isJoined = effectiveRoom != null
-    val title = effectiveRoom?.metadata?.name ?: viewModel.groupId.ifEmpty { "Chat Room" }
+    val title = effectiveRoom?.metadata?.name
+        ?: viewModel.groupId.ifEmpty { stringResource(R.string.group_fallback_title) }
 
     val onlinePubkeys by eventRepo.onlinePubkeys.collectAsState()
     val groupMembersSet = remember(effectiveRoom?.members) {
@@ -960,7 +961,7 @@ private fun JoinRoomPrompt(
             }
             Spacer(Modifier.height(8.dp))
             Button(onClick = onJoin) {
-                Text("Join Chat Room")
+                Text(stringResource(R.string.title_join_chat_room))
             }
         }
     }
