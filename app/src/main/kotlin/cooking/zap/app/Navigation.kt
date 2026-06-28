@@ -1628,7 +1628,7 @@ fun WispNavHost(
                         navController.navigate("dm/${convo.peerPubkey}")
                     }
                 },
-                onNewGroupDm = {
+                onNewDm = {
                     navController.navigate(Routes.CONTACT_PICKER)
                 },
                 onGroupRoom = { relayUrl, groupId ->
@@ -1642,17 +1642,16 @@ fun WispNavHost(
         }
 
         composable(Routes.CONTACT_PICKER) {
-            val userPubkey = feedViewModel.getUserPubkey() ?: return@composable
+            // DMs are 1:1 only: picking a contact opens a one-on-one conversation.
+            if (feedViewModel.getUserPubkey() == null) return@composable
             ContactPickerScreen(
-                viewModel = dmListViewModel,
                 eventRepo = feedViewModel.eventRepo,
                 contactRepo = feedViewModel.contactRepo,
                 onBack = { navController.popBackStack() },
-                onConfirm = { conversationKey ->
+                onConfirm = { pubkey ->
                     navController.popBackStack()
-                    navController.navigate("dm/group/${conversationKey.replace(",", "~")}")
-                },
-                myPubkey = userPubkey
+                    navController.navigate("dm/$pubkey")
+                }
             )
         }
 

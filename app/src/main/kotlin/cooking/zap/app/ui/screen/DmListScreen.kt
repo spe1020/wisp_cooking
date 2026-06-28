@@ -73,7 +73,7 @@ fun DmListScreen(
     signer: NostrSigner? = null,
     onBack: (() -> Unit)? = null,
     onConversation: (DmConversation) -> Unit,
-    onNewGroupDm: () -> Unit = {},
+    onNewDm: () -> Unit = {},
     onGroupRoom: (relayUrl: String, groupId: String) -> Unit = { _, _ -> }
 ) {
     val conversations by viewModel.conversationList.collectAsState()
@@ -116,9 +116,10 @@ fun DmListScreen(
         },
         floatingActionButton = {
             // New-DM FAB belongs to the Messages tab; the Rooms tab has its own create/invite header.
+            // DMs are 1:1 only — this opens a single-select contact picker, not a group composer.
             if (selectedTab == 0) {
                 cooking.zap.app.ui.component.ZapGradientFab(
-                    onClick = onNewGroupDm,
+                    onClick = onNewDm,
                     contentDescription = null
                 ) {
                     Icon(Icons.AutoMirrored.Outlined.Chat, contentDescription = stringResource(R.string.cd_new_conversation), tint = Color.White)
