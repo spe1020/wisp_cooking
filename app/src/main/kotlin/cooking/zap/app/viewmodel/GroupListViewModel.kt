@@ -516,21 +516,36 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /**
+     * Create a chat room with a deterministic posture. Rooms are ALWAYS `closed` — joining is
+     * invite/approval-based on this relay (kind 9009 invite codes), never auto-join — so we never
+     * emit an `open` tag. The public/private choice picks between two fixed flag sets:
+     *
+     *  - Public  → `public`, `closed`, `unrestricted`, `visible` (discoverable + readable preview;
+     *              join still requires an invite/approval)
+     *  - Private → `private`, `closed`, `restricted`, `hidden`   (invite-only, unlisted, read-gated)
+     *
+     * The explicit 9002 is sent on EVERY create (no short-circuit) so the posture is deterministic
+     * rather than inherited from the relay default. This fork ships LocalSigner only, so the second
+     * signing op is silent — the legacy remote-signer infinite-loop caveat no longer applies.
+     */
     fun createGroup(
         relayUrl: String,
         name: String,
         signer: NostrSigner?,
-        isPrivate: Boolean = false,
-        isClosed: Boolean = false,
-        isRestricted: Boolean = false,
-        isHidden: Boolean = false
+        about: String = "",
+        isPrivate: Boolean = false
     ) {
         val repo = groupRepo ?: return
         val pool = relayPool ?: return
         val relayUrl = relayUrl.lowercase().trimEnd('/')
         val groupId = Nip29.generateGroupId()
-        // Store name locally — avoids a second signing operation at create time which
-        // causes an infinite loop in the remote signer bridge after "Always allow" is granted.
+        // Rooms are never open: closed is always on, restricted/hidden track the private choice.
+        val isClosed = true
+        val isRestricted = isPrivate
+        val isHidden = isPrivate
+        // Store name locally so the room shows its name immediately, before the 39000 metadata
+        // event round-trips back from the relay.
         repo.addGroup(relayUrl, groupId, localName = name.trim().ifEmpty { null })
         // Optimistically record the chosen flags so the UI reflects the intended posture
         // before the 39000 metadata event round-trips back from the relay.
@@ -538,7 +553,7 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
             groupId = groupId,
             name = name.trim().ifEmpty { null },
             picture = null,
-            about = null,
+            about = about.trim().ifEmpty { null },
             isPrivate = isPrivate,
             isClosed = isClosed,
             isRestricted = isRestricted,
@@ -546,7 +561,6 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
         ))
         subscribeToGroup(relayUrl, groupId)
         publishGroupList(signer)
-        val anyFlagSet = isPrivate || isClosed || isRestricted || isHidden
         signer?.let { s ->
             viewModelScope.launch(Dispatchers.Default) {
                 val createResult = publishAdminEvent(
@@ -561,25 +575,23 @@ class GroupListViewModel(app: Application) : AndroidViewModel(app) {
 
                 // If the relay rejected the create, rolling the local placeholder back avoids
                 // later 9009/9002 calls trying to address a group the relay doesn't know about.
+                // (publishAdminEvent already surfaced the relay's reason via adminErrors.)
                 if (createResult != null && !createResult.accepted) {
                     repo.removeGroup(relayUrl, groupId)
                     return@launch
                 }
 
-                // Only fire the follow-up 9002 if the user actually customized the group's
-                // posture. This keeps default "open" creations to a single signing op (the
-                // original behavior that avoided the remote-signer bridge infinite loop).
-                if (!anyFlagSet) return@launch
-
                 // Give the relay time to process 9007 and mark us as admin before 9002 —
-                // relay29 rejects edit-metadata from non-admins, and back-to-back events
+                // the relay rejects edit-metadata from non-admins, and back-to-back events
                 // can race against the admin grant.
                 kotlinx.coroutines.delay(1_500)
 
+                // Always set the full posture explicitly. NEVER emit "open" — rooms are closed.
                 val editTags = mutableListOf(listOf("h", groupId))
                 if (name.isNotBlank()) editTags.add(listOf("name", name.trim()))
+                if (about.isNotBlank()) editTags.add(listOf("about", about.trim()))
                 editTags.add(listOf(if (isPrivate) "private" else "public"))
-                editTags.add(listOf(if (isClosed) "closed" else "open"))
+                editTags.add(listOf("closed"))
                 editTags.add(listOf(if (isRestricted) "restricted" else "unrestricted"))
                 editTags.add(listOf(if (isHidden) "hidden" else "visible"))
                 publishAdminEvent(
