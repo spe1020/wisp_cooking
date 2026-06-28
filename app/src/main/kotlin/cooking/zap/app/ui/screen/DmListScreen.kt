@@ -85,7 +85,7 @@ fun DmListScreen(
         topBar = {
             Column {
                 TopAppBar(
-                    title = { Text(stringResource(R.string.title_chat)) },
+                    title = { Text(stringResource(R.string.nav_messages)) },
                     navigationIcon = {
                         if (onBack != null) {
                             IconButton(onClick = onBack) {
@@ -104,12 +104,12 @@ fun DmListScreen(
                     Tab(
                         selected = selectedTab == 0,
                         onClick = { selectedTab = 0 },
-                        text = { Text(stringResource(R.string.tab_messages)) }
+                        text = { Text(stringResource(R.string.nav_messages)) }
                     )
                     Tab(
                         selected = selectedTab == 1,
                         onClick = { selectedTab = 1 },
-                        text = { Text(stringResource(R.string.tab_rooms)) }
+                        text = { Text(stringResource(R.string.title_rooms)) }
                     )
                 }
             }

@@ -133,7 +133,8 @@ fun RoomsTab(
         if (nothingToShow) {
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .fillMaxWidth()
+                    .weight(1f)
                     .padding(32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -151,7 +152,9 @@ fun RoomsTab(
             }
         } else {
             LazyColumn(
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
             ) {
                 if (joined.isNotEmpty()) {
                     item { SectionHeader(stringResource(R.string.section_your_rooms)) }
