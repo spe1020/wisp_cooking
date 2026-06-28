@@ -443,9 +443,11 @@ fun WispDrawerContent(
             )
         }
         // Recipes, Sous Chef, Cheffy, OnlyFood, and Lists drawer entries were
-        // removed from the menu. The functionality and callbacks remain wired
-        // (onRecipes/onSousChef/onCheffy/onOnlyFood/onLists) — only their
-        // appearance here is hidden.
+        // removed from the menu. Their callback params
+        // (onRecipes/onSousChef/onCheffy/onOnlyFood/onLists) are intentionally
+        // kept on the function signature for API/call-site stability — the
+        // destinations still exist and are reachable elsewhere — even though
+        // they're no longer referenced here.
         NavigationDrawerItem(
             icon = { Icon(Icons.Outlined.Edit, contentDescription = null) },
             label = { Text(stringResource(R.string.drawer_drafts)) },
