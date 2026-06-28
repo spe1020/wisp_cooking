@@ -140,6 +140,8 @@ class EventRepository(val profileRepo: ProfileRepository? = null, val muteRepo: 
     private val ONLY_FOOD_BLOCKED_PUBKEYS: Set<String> = setOf(
         // npub1m354es2t3hpx0wslegv7qrrpt4dmjyzh6feazktpuze0vnqw6jcqx5ps3x
         "dc695cc14b8dc267ba1fca19e00c615d5bb91057d273d15961e0b2f64c0ed4b0",
+        // npub1qvv7xqpkeugn4qsa9lqjuypjttpx6gewk3gzz80mew07lgpw57sq2u5jtf
+    "0319e30036cf113a821d2fc12e10325ac26d232eb450211dfbcb9fefa02ea7a0",
     )
 
     // Author filter: null = show all, non-null = only show events from these pubkeys
