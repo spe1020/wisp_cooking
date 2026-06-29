@@ -184,6 +184,7 @@ object Routes {
     const val CONTACT_PICKER = "contact_picker"
     const val GROUP_ROOM = "group_room/{encodedRelay}/{groupId}?scrollTo={scrollTo}"
     const val GROUP_DETAIL = "group_detail/{encodedRelay}/{groupId}"
+    const val REPORTS = "reports?groupId={groupId}"
     const val NOTIFICATIONS = "notifications"
     const val BLOSSOM_SERVERS = "blossom_servers"
     const val WALLET = "wallet"
@@ -557,7 +558,7 @@ fun WispNavHost(
     }
 
     val nonAppRoutes = setOf(Routes.SPLASH, Routes.AUTH, Routes.GOOGLE_AUTH, Routes.LOADING, Routes.BACKUP_KEY, Routes.ONBOARDING_PROFILE, Routes.ONBOARDING_SUGGESTIONS, Routes.ONBOARDING_TOPICS, Routes.ONBOARDING_SAVE_RECIPES, Routes.ONBOARDING_FIRST_POST, Routes.EXISTING_USER_ONBOARDING, Routes.WATCH_ONLY_ONBOARDING)
-    val hideBottomBarRoutes = nonAppRoutes + Routes.DM_CONVERSATION + Routes.DM_CONVERSATION_GROUP + Routes.CONTACT_PICKER + Routes.GROUP_ROOM + Routes.GROUP_DETAIL + Routes.LIVE_STREAM
+    val hideBottomBarRoutes = nonAppRoutes + Routes.DM_CONVERSATION + Routes.DM_CONVERSATION_GROUP + Routes.CONTACT_PICKER + Routes.GROUP_ROOM + Routes.GROUP_DETAIL + Routes.REPORTS + Routes.LIVE_STREAM
     val socialGraphDiscoveryState by feedViewModel.extendedNetworkRepo.discoveryState.collectAsState()
     val socialGraphComputing = currentRoute == Routes.SOCIAL_GRAPH && (
         socialGraphDiscoveryState is cooking.zap.app.repo.DiscoveryState.FetchingFollowLists ||
@@ -860,6 +861,7 @@ fun WispNavHost(
                 keyBackupNeeded = keyBackupNudge,
                 onPowSettings = { closeDrawerAndNavigate(Routes.POW_SETTINGS) },
                 onConsole = { closeDrawerAndNavigate(Routes.CONSOLE) },
+                onReports = { closeDrawerAndNavigate("reports") },
                 connectedRelayCount = drawerConnectedCount,
                 onlineCount = drawerOnlinePubkeys.size,
                 onNetworkStatus = { closeDrawerAndNavigate(Routes.RELAY_HEALTH) },
@@ -2200,7 +2202,59 @@ fun WispNavHost(
                             androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
                         )
                     )
+                },
+                onReports = {
+                    navController.navigate("reports?groupId=${android.net.Uri.encode(groupId)}")
                 }
+            )
+        }
+
+        composable(
+            Routes.REPORTS,
+            arguments = listOf(navArgument("groupId") {
+                type = NavType.StringType; nullable = true; defaultValue = null
+            })
+        ) { backStackEntry ->
+            val scopedGroupId = backStackEntry.arguments?.getString("groupId")?.takeIf { it.isNotEmpty() }
+            val reportsViewModel: cooking.zap.app.viewmodel.ReportsViewModel = viewModel()
+            val reportsPubkey = feedViewModel.getUserPubkey()
+            LaunchedEffect(scopedGroupId, reportsPubkey) {
+                reportsViewModel.init(
+                    feedViewModel.relayPool,
+                    feedViewModel.metadataFetcher,
+                    reportsPubkey,
+                    scopedGroupId,
+                )
+            }
+            fun encodeRelay(relay: String) = android.util.Base64.encodeToString(
+                relay.toByteArray(Charsets.UTF_8),
+                android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING
+            )
+            cooking.zap.app.ui.screen.ReportsScreen(
+                viewModel = reportsViewModel,
+                eventRepo = feedViewModel.eventRepo,
+                onBack = { navController.popBackStack() },
+                groupNameFor = { gid ->
+                    feedViewModel.groupRepo.getRelayForGroup(gid)
+                        ?.let { relay -> feedViewModel.groupRepo.getRoom(relay, gid)?.metadata?.name }
+                },
+                onOpenReportedUser = { gid, reportedPubkey ->
+                    if (gid != null) {
+                        // Land on the group's member list, where the existing kick/Remove & ban lives.
+                        val relay = feedViewModel.groupRepo.getRelayForGroup(gid)
+                            ?: cooking.zap.app.relay.RelayConfig.MEMBERS_RELAY
+                        navController.navigate("group_detail/${encodeRelay(relay)}/${android.net.Uri.encode(gid)}")
+                    } else {
+                        navController.navigate("profile/$reportedPubkey")
+                    }
+                },
+                onOpenReportedMessage = { gid, eventId ->
+                    val relay = feedViewModel.groupRepo.getRelayForGroup(gid)
+                        ?: cooking.zap.app.relay.RelayConfig.MEMBERS_RELAY
+                    navController.navigate(
+                        "group_room/${encodeRelay(relay)}/${android.net.Uri.encode(gid)}?scrollTo=${android.net.Uri.encode(eventId)}"
+                    )
+                },
             )
         }
 

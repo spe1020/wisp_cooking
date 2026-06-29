@@ -71,4 +71,56 @@ object Nip56 {
         append("[").append(category.label).append("]")
         if (reason.isNotBlank()) append(" ").append(reason.trim())
     }
+
+    /** A parsed kind-1984 report, for the in-app moderation inbox (read side). */
+    data class ReportInfo(
+        val id: String,
+        val reporterPubkey: String,
+        val reportedPubkey: String,
+        val categoryLabel: String,
+        val reason: String,
+        val reportedEventId: String?,
+        val groupId: String?,
+        val createdAt: Long,
+    )
+
+    private val CONTENT_REGEX = Regex("^\\[(.+?)]\\s*(.*)$", RegexOption.DOT_MATCHES_ALL)
+
+    /** The NIP-56 standard report types (the 3rd element of a *typed* report `p`/`e` tag). */
+    private val REPORT_TYPES = setOf(
+        "nudity", "malware", "profanity", "illegal", "spam", "impersonation", "other",
+    )
+
+    /**
+     * Parse a kind-1984 event into a [ReportInfo], or null if it isn't a usable report.
+     *
+     * The reported user is the `p` tag whose 3rd element is a known NIP-56 report type (written by
+     * [buildReportTags]); a routing/admin `p` tag whose 3rd element is a relay hint won't be
+     * mistaken for it. The category label is recovered from the `[Label] reason` content, falling
+     * back to the typed tag's NIP-56 type if the content isn't in that shape.
+     */
+    fun parseReport(event: NostrEvent): ReportInfo? {
+        if (event.kind != KIND_REPORT) return null
+        val typedP = event.tags.firstOrNull { it.size >= 3 && it[0] == "p" && it[2] in REPORT_TYPES }
+            ?: event.tags.firstOrNull { it.size >= 3 && it[0] == "p" }
+            ?: return null
+        val reportedPubkey = typedP[1]
+        val reportedEventId = event.tags.firstOrNull { it.size >= 2 && it[0] == "e" }?.get(1)
+        val groupId = event.tags.firstOrNull { it.size >= 2 && it[0] == "h" }?.get(1)
+
+        val match = CONTENT_REGEX.find(event.content.trim())
+        val label = match?.groupValues?.get(1)?.trim().orEmpty().ifEmpty { typedP[2] }
+        val reason = match?.groupValues?.get(2)?.trim() ?: event.content.trim()
+
+        return ReportInfo(
+            id = event.id,
+            reporterPubkey = event.pubkey,
+            reportedPubkey = reportedPubkey,
+            categoryLabel = label,
+            reason = reason,
+            reportedEventId = reportedEventId,
+            groupId = groupId,
+            createdAt = event.created_at,
+        )
+    }
 }

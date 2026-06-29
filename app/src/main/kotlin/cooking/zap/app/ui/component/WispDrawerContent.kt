@@ -46,6 +46,7 @@ import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Hub
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Tune
@@ -120,6 +121,7 @@ fun WispDrawerContent(
     onPowSettings: () -> Unit = {},
     onCustomEmojis: () -> Unit = {},
     onConsole: () -> Unit = {},
+    onReports: () -> Unit = {},
     // Network diagnostics relocated from the Feed top-bar chips (PR 3).
     // onNetworkStatus is the single relay-diagnostics entry (was Relay Health).
     connectedRelayCount: Int = 0,
@@ -528,6 +530,16 @@ fun WispDrawerContent(
                 delay(300) // wait for AnimatedVisibility expansion
                 scrollState.animateScrollTo(scrollState.maxValue)
             }
+        }
+        // Moderation inbox — ops-only (Pantry mod admins). Room admins reach Reports from group detail.
+        if (pubkey != null && pubkey in cooking.zap.app.nostr.Nip56.PANTRY_MOD_ADMINS) {
+            NavigationDrawerItem(
+                icon = { Icon(Icons.Outlined.Flag, contentDescription = null) },
+                label = { Text(stringResource(R.string.drawer_reports)) },
+                selected = false,
+                onClick = onReports,
+                modifier = Modifier.height(48.dp).padding(horizontal = 12.dp)
+            )
         }
         NavigationDrawerItem(
             icon = { Icon(Icons.Outlined.Settings, contentDescription = null) },

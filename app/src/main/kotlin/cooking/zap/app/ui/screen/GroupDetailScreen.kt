@@ -23,6 +23,7 @@ import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditOff
+import androidx.compose.material.icons.outlined.Flag
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.Lock
@@ -87,7 +88,8 @@ fun GroupDetailScreen(
     onBack: () -> Unit,
     onLeave: () -> Unit = {},
     onDelete: () -> Unit = {},
-    onPickPicture: ((String) -> Unit) -> Unit = {}
+    onPickPicture: ((String) -> Unit) -> Unit = {},
+    onReports: () -> Unit = {}
 ) {
     val groups by groupListViewModel.groups.collectAsState()
     val room = groups.firstOrNull { it.groupId == groupId && it.relayUrl == relayUrl }
@@ -122,6 +124,9 @@ fun GroupDetailScreen(
                 },
                 actions = {
                     if (isAdmin) {
+                        IconButton(onClick = onReports) {
+                            Icon(Icons.Outlined.Flag, contentDescription = stringResource(R.string.cd_reports))
+                        }
                         IconButton(onClick = { showEditDialog = true }) {
                             Icon(Icons.Outlined.Edit, contentDescription = stringResource(R.string.cd_edit_group))
                         }
