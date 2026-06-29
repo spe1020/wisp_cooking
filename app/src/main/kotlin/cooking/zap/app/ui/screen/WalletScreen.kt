@@ -135,6 +135,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
@@ -1492,7 +1493,15 @@ private fun WalletHomeContent(
                 HorizontalDivider(
                     color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                 )
-                recentTransactions.take(1).forEach { tx ->
+                // Scale the inline history to the device height (Dark Wisp parity).
+                val screenHeightDp = LocalConfiguration.current.screenHeightDp
+                val txCount = when {
+                    screenHeightDp >= 800 -> 5
+                    screenHeightDp >= 720 -> 4
+                    screenHeightDp >= 640 -> 3
+                    else -> 2
+                }
+                recentTransactions.take(txCount).forEach { tx ->
                     TransactionRow(tx, profileLookup, balanceDisplay)
                 }
             }
