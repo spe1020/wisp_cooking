@@ -14,6 +14,7 @@ import cooking.zap.app.repo.GroupMessage
 import cooking.zap.app.repo.GroupRepository
 import cooking.zap.app.repo.GroupRoom
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -256,6 +257,9 @@ class GroupRoomViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.Default) {
             _sending.value = true
             _sendError.value = null
+            // Hoisted so a failure after it starts (connect failure or an exception below) can
+            // cancel it — otherwise a lingering watcher could set _sendError after the send failed.
+            var watcher: Job? = null
             try {
                 val tags = mutableListOf(listOf("h", groupId, relayUrl))
                 if (replyId != null && replyAuthorPubkey != null) {
@@ -287,7 +291,7 @@ class GroupRoomViewModel(app: Application) : AndroidViewModel(app) {
                 // being silently dropped. Runs independently so it doesn't hold up _sending; the
                 // relay's OK is a network round-trip, so the watcher is collecting well before it.
                 val eventId = event.id
-                val watcher = viewModelScope.launch(Dispatchers.Default) {
+                watcher = viewModelScope.launch(Dispatchers.Default) {
                     val result = withTimeoutOrNull(REJECTION_TIMEOUT_MS) {
                         relayPool.publishResults.first { it.eventId == eventId && it.relayUrl == relayUrl }
                     }
@@ -311,6 +315,7 @@ class GroupRoomViewModel(app: Application) : AndroidViewModel(app) {
                     _sendError.value = "Could not connect to relay"
                 }
             } catch (e: Exception) {
+                watcher?.cancel()
                 _sendError.value = e.message ?: "Send failed"
             } finally {
                 _sending.value = false
