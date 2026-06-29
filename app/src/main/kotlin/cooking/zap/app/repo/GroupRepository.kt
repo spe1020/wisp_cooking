@@ -42,10 +42,13 @@ class GroupRepository(private val context: Context, pubkeyHex: String? = null) {
     private val seenMessages = ConcurrentHashMap.newKeySet<String>()
 
     /**
-     * Guards compound read-modify-write mutations of a room's message list. The relay
-     * collector (Dispatchers.Default) and optimistic local sends (also Default / Main)
-     * both mutate `rooms[key]`, so a bare ConcurrentHashMap get-then-put can lose
-     * updates or corrupt ordering. Critical sections are short (list copy + trim).
+     * Guards every compound read-modify-write of [rooms] (messages, reactions,
+     * metadata, admins, members, add/remove, clear). The relay collector
+     * (Dispatchers.Default) and optimistic local sends (also Default / Main) both
+     * mutate `rooms[key]`, so a bare ConcurrentHashMap get-then-put can lose updates
+     * (last-writer-wins) or corrupt ordering. All mutators must hold this lock so they
+     * can't race each other; reads stay lock-free on the ConcurrentHashMap.
+     * Critical sections are short (a list copy + trim at most).
      */
     private val roomsLock = Any()
 
@@ -98,18 +101,20 @@ class GroupRepository(private val context: Context, pubkeyHex: String? = null) {
                     }
                 }
 
-                // Seed dedup set from persisted messages so we don't re-add on relay replay
-                persisted?.messages?.forEach { seenMessages.add(it.id) }
+                synchronized(roomsLock) {
+                    // Seed dedup set from persisted messages so we don't re-add on relay replay
+                    persisted?.messages?.forEach { seenMessages.add(it.id) }
 
-                rooms[key] = GroupRoom(
-                    groupId = groupId,
-                    relayUrl = relayUrl,
-                    metadata = metadata,
-                    messages = persisted?.messages ?: emptyList(),
-                    lastMessageAt = persisted?.lastMessageAt ?: 0L,
-                    admins = persisted?.admins ?: emptyList(),
-                    members = persisted?.members ?: emptyList()
-                )
+                    rooms[key] = GroupRoom(
+                        groupId = groupId,
+                        relayUrl = relayUrl,
+                        metadata = metadata,
+                        messages = persisted?.messages ?: emptyList(),
+                        lastMessageAt = persisted?.lastMessageAt ?: 0L,
+                        admins = persisted?.admins ?: emptyList(),
+                        members = persisted?.members ?: emptyList()
+                    )
+                }
             }
         }
         emit()
@@ -121,19 +126,21 @@ class GroupRepository(private val context: Context, pubkeyHex: String? = null) {
             Nip29.GroupMetadata(groupId, localName, null, null, false, false)
         } else null
         val room = GroupRoom(groupId, relayUrl, metadata, emptyList(), 0L)
-        rooms.putIfAbsent(key, room)
+        val currentRoom = synchronized(roomsLock) {
+            rooms.putIfAbsent(key, room)
+            rooms[key] ?: room
+        }
         persistRooms()
         if (!localName.isNullOrEmpty()) {
             prefs.edit().putString("local_name_$key", localName).apply()
         }
-        val currentRoom = rooms[key] ?: room
         ownerPubkey?.let { persistence?.upsertRoomMeta(it, currentRoom) }
         emit()
     }
 
     fun removeGroup(relayUrl: String, groupId: String) {
         val key = roomKey(relayUrl, groupId)
-        rooms.remove(key)
+        synchronized(roomsLock) { rooms.remove(key) }
         prefs.edit().remove("local_name_$key").apply()
         persistRooms()
         ownerPubkey?.let { persistence?.deleteRoom(it, relayUrl, groupId) }
@@ -142,28 +149,37 @@ class GroupRepository(private val context: Context, pubkeyHex: String? = null) {
 
     fun updateMetadata(relayUrl: String, groupId: String, metadata: Nip29.GroupMetadata) {
         val key = roomKey(relayUrl, groupId)
-        val existing = rooms[key] ?: GroupRoom(groupId, relayUrl, null, emptyList(), 0L)
-        val mergedName = metadata.name?.takeIf { it.isNotEmpty() } ?: existing.metadata?.name
-        val updated = existing.copy(metadata = metadata.copy(name = mergedName))
-        rooms[key] = updated
+        val updated = synchronized(roomsLock) {
+            val existing = rooms[key] ?: GroupRoom(groupId, relayUrl, null, emptyList(), 0L)
+            val mergedName = metadata.name?.takeIf { it.isNotEmpty() } ?: existing.metadata?.name
+            val u = existing.copy(metadata = metadata.copy(name = mergedName))
+            rooms[key] = u
+            u
+        }
         ownerPubkey?.let { persistence?.upsertRoomMeta(it, updated) }
         emit()
     }
 
     fun updateAdmins(relayUrl: String, groupId: String, admins: List<String>) {
         val key = roomKey(relayUrl, groupId)
-        val existing = rooms[key] ?: return
-        val updated = existing.copy(admins = admins)
-        rooms[key] = updated
+        val updated = synchronized(roomsLock) {
+            val existing = rooms[key] ?: return
+            val u = existing.copy(admins = admins)
+            rooms[key] = u
+            u
+        }
         ownerPubkey?.let { persistence?.upsertRoomMeta(it, updated) }
         emit()
     }
 
     fun updateMembers(relayUrl: String, groupId: String, members: List<String>) {
         val key = roomKey(relayUrl, groupId)
-        val existing = rooms[key] ?: return
-        val updated = existing.copy(members = members)
-        rooms[key] = updated
+        val updated = synchronized(roomsLock) {
+            val existing = rooms[key] ?: return
+            val u = existing.copy(members = members)
+            rooms[key] = u
+            u
+        }
         ownerPubkey?.let { persistence?.upsertRoomMeta(it, updated) }
         emit()
     }
@@ -336,8 +352,10 @@ class GroupRepository(private val context: Context, pubkeyHex: String? = null) {
     }
 
     fun clear() {
-        rooms.clear()
-        seenMessages.clear()
+        synchronized(roomsLock) {
+            rooms.clear()
+            seenMessages.clear()
+        }
         _unreadGroups.value = emptySet()
         emit()
     }
