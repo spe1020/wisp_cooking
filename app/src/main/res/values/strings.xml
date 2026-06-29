@@ -983,6 +983,17 @@
     <string name="title_remove_ban">Remove &amp; ban</string>
     <string name="msg_remove_ban_confirm">Remove and ban %s from this group? They won\'t be able to rejoin, even with an invite.</string>
 
+    <!-- Reports inbox (NIP-56 read surface) -->
+    <string name="title_reports">Reports</string>
+    <string name="drawer_reports">Reports</string>
+    <string name="cd_reports">Reports</string>
+    <string name="reports_empty">No reports</string>
+    <string name="reports_empty_hint">Reports routed to you will appear here.</string>
+    <string name="reports_error">Couldn\'t load reports</string>
+    <string name="reports_reported_by">Reported by %1$s</string>
+    <string name="reports_in_group">in %1$s</string>
+    <string name="reports_view_message">View reported message</string>
+
     <!-- NIP-29 group configuration flags -->
     <string name="group_flag_private_label">Private</string>
     <string name="group_flag_private_desc">Only members can read messages</string>
