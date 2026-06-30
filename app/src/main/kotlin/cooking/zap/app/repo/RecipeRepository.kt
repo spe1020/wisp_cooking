@@ -239,6 +239,11 @@ class RecipeRepository(
         _isLoadingMore.value = false
         _isRefreshing.value = false
         _exhausted.value = false
+        // Cache-first paint: surface the full known recipe set so a slow first fetch
+        // never leaves a short/partial list. The live query merges into the same
+        // byCoordinate (newest-wins), so the grid converges to (cache ∪ live) and never
+        // shrinks below the cached set, whichever arrives first.
+        paintFeedFromCache()
         loadJob = launchNewestWindowQuery(limit, _isLoading)
     }
 
@@ -933,6 +938,55 @@ class RecipeRepository(
         _isTagLoadingMore.value = false
         _isTagRefreshing.value = false
         _tagExhausted.value = false
+    }
+
+    /**
+     * The cached recipe set for the MAIN feed: persisted events that pass
+     * [RecipeFormats.forEvent] — the SAME predicate the live collector gates on
+     * (kind + exact recipe hashtag via [RecipeParser.isRecipe]). Using forEvent
+     * rather than a separate tag check keeps the cache scoping literally identical
+     * to the live feed — no wider, no narrower. Read-only; [paintFeedFromCache]
+     * merges these through the normal acceptEvent/emitRecipes path. Blocking
+     * ObjectBox read — call off the main thread. Mirrors [cachedTagEvents].
+     */
+    private fun cachedFeedEvents(limit: Int): List<NostrEvent> {
+        val persistence = eventRepo.eventPersistence ?: return emptyList()
+        return RecipeFormats.active
+            .flatMap { persistence.getEventsByKind(it.kind, limit) }
+            .filter { RecipeFormats.forEvent(it) != null }
+    }
+
+    /**
+     * Cache-first paint for the main recipe feed (mirrors
+     * [EventRepository.paintOnlyFoodFromCache]). On activation, merge the cached
+     * recipe set into [byCoordinate] and emit it, so switching into Recipes shows
+     * the full known set instead of a short/partial list while slow indexers are
+     * still replying. The live newest-window query merges into the SAME
+     * [byCoordinate] via the SAME acceptEvent/emitRecipes path (newest-wins per
+     * coordinate), so — regardless of which arrives first — the grid converges to
+     * (cache ∪ live) and never shrinks below the cached set. (The cache read is a
+     * local store, so in practice it paints before the relay round-trip.)
+     *
+     * Epoch-guarded: [clear]/[loadFeed]/[refresh] bump [epoch], and this paint
+     * re-checks it under [coordMutex] before EACH merge and again before the emit,
+     * so a load/refresh/clear that supersedes this paint stops it mid-merge — a
+     * stale paint can't resurrect a cleared feed or fight a newer load.
+     */
+    private fun paintFeedFromCache(cacheLimit: Int = 2_000) {
+        val startedEpoch = epoch
+        scope.launch(processingContext) {
+            val cached = cachedFeedEvents(cacheLimit)
+            if (cached.isEmpty()) return@launch
+            coordMutex.withLock {
+                var changed = false
+                for (event in cached) {
+                    if (epoch != startedEpoch) return@withLock  // superseded mid-merge → bail
+                    if (acceptEvent(event)) changed = true
+                }
+                if (epoch != startedEpoch) return@withLock
+                if (changed) emitRecipes()
+            }
+        }
     }
 
     /** Merge [event] into [byCoordinate]; return true iff it became the winner. */
