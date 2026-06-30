@@ -239,9 +239,10 @@ class RecipeRepository(
         _isLoadingMore.value = false
         _isRefreshing.value = false
         _exhausted.value = false
-        // Cache-first paint: show the full known recipe set instantly so a slow first
-        // fetch never renders a short/partial list. The live query below merges on top
-        // (newest-wins per coordinate), so it can only ADD recipes, never shrink the grid.
+        // Cache-first paint: surface the full known recipe set so a slow first fetch
+        // never leaves a short/partial list. The live query merges into the same
+        // byCoordinate (newest-wins), so the grid converges to (cache ∪ live) and never
+        // shrinks below the cached set, whichever arrives first.
         paintFeedFromCache()
         loadJob = launchNewestWindowQuery(limit, _isLoading)
     }
@@ -940,32 +941,36 @@ class RecipeRepository(
     }
 
     /**
-     * The cached recipe set for the MAIN feed: persisted recipe-format events that
-     * carry a recipe-feed tag ([hasRecipeFeedTag]) — the SAME scoping the live
-     * filter uses. Read-only; [paintFeedFromCache] merges these through the normal
-     * acceptEvent/emitRecipes path. Blocking ObjectBox read — call off the main
-     * thread. Mirrors [cachedTagEvents]/[cachedAuthoredEvents].
+     * The cached recipe set for the MAIN feed: persisted events that pass
+     * [RecipeFormats.forEvent] — the SAME predicate the live collector gates on
+     * (kind + exact recipe hashtag via [RecipeParser.isRecipe]). Using forEvent
+     * rather than a separate tag check keeps the cache scoping literally identical
+     * to the live feed — no wider, no narrower. Read-only; [paintFeedFromCache]
+     * merges these through the normal acceptEvent/emitRecipes path. Blocking
+     * ObjectBox read — call off the main thread. Mirrors [cachedTagEvents].
      */
     private fun cachedFeedEvents(limit: Int): List<NostrEvent> {
         val persistence = eventRepo.eventPersistence ?: return emptyList()
         return RecipeFormats.active
             .flatMap { persistence.getEventsByKind(it.kind, limit) }
-            .filter { RecipeFormats.forEvent(it) != null && hasRecipeFeedTag(it) }
+            .filter { RecipeFormats.forEvent(it) != null }
     }
 
     /**
      * Cache-first paint for the main recipe feed (mirrors
      * [EventRepository.paintOnlyFoodFromCache]). On activation, merge the cached
-     * recipe set into [byCoordinate] and emit BEFORE the live newest-window query,
-     * so switching into Recipes shows the full known set instantly instead of a
-     * short/partial list while slow indexers are still replying. Live results then
-     * merge ON TOP via the SAME acceptEvent/emitRecipes path (newest-wins per
-     * coordinate), so a slow or under-delivering live fetch can only ADD, never
-     * shrink the grid.
+     * recipe set into [byCoordinate] and emit it, so switching into Recipes shows
+     * the full known set instead of a short/partial list while slow indexers are
+     * still replying. The live newest-window query merges into the SAME
+     * [byCoordinate] via the SAME acceptEvent/emitRecipes path (newest-wins per
+     * coordinate), so — regardless of which arrives first — the grid converges to
+     * (cache ∪ live) and never shrinks below the cached set. (The cache read is a
+     * local store, so in practice it paints before the relay round-trip.)
      *
-     * Epoch-guarded: a load/refresh/[clear] that bumps [epoch] after this paint
-     * started cancels its merge (checked under [coordMutex]), so a stale paint can't
-     * resurrect a cleared feed or fight a newer load.
+     * Epoch-guarded: [clear]/[loadFeed]/[refresh] bump [epoch], and this paint
+     * re-checks it under [coordMutex] before EACH merge and again before the emit,
+     * so a load/refresh/clear that supersedes this paint stops it mid-merge — a
+     * stale paint can't resurrect a cleared feed or fight a newer load.
      */
     private fun paintFeedFromCache(cacheLimit: Int = 2_000) {
         val startedEpoch = epoch
@@ -973,9 +978,12 @@ class RecipeRepository(
             val cached = cachedFeedEvents(cacheLimit)
             if (cached.isEmpty()) return@launch
             coordMutex.withLock {
-                if (epoch != startedEpoch) return@withLock
                 var changed = false
-                for (event in cached) if (acceptEvent(event)) changed = true
+                for (event in cached) {
+                    if (epoch != startedEpoch) return@withLock  // superseded mid-merge → bail
+                    if (acceptEvent(event)) changed = true
+                }
+                if (epoch != startedEpoch) return@withLock
                 if (changed) emitRecipes()
             }
         }
@@ -1010,16 +1018,6 @@ internal fun recipeCoordinate(event: NostrEvent): String {
     val d = event.tags.firstOrNull { it.size >= 2 && it[0] == "d" }?.get(1) ?: ""
     return "${event.kind}:${event.pubkey}:$d"
 }
-
-/**
- * True when [event] carries a recipe-feed `t`-tag (zapcooking/nostrcooking),
- * mirroring the live feed filter's `tTags = RecipeParser.RECIPE_HASHTAGS`. The
- * cache-first paint uses this to replicate the relay's recipe scoping before
- * merging cached events, so "what counts as a feed recipe" stays IDENTICAL to the
- * live query (the tag scoping is intentional and unchanged).
- */
-internal fun hasRecipeFeedTag(event: NostrEvent): Boolean =
-    event.tags.any { it.size >= 2 && it[0] == "t" && it[1].trim().lowercase() in RecipeParser.RECIPE_HASHTAGS }
 
 /**
  * NIP-01 replaceable-event winner: the higher `created_at` wins; on an EQUAL
