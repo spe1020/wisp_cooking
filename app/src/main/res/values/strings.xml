@@ -894,6 +894,7 @@
     <string name="wallet_load_more">Load more</string>
     <string name="wallet_received">Received</string>
     <string name="wallet_sent">Sent</string>
+    <string name="wallet_tx_pending">Pending</string>
     <string name="wallet_fee">fee: %,d sats</string>
     <string name="wallet_spark_sdk">SDK v%s</string>
     <string name="wallet_not_supported">Not supported by your wallet</string>

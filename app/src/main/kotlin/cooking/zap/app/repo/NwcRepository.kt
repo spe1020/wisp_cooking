@@ -57,6 +57,9 @@ class NwcRepository(private val context: Context, private val relayPool: RelayPo
     private val _paymentReceived = MutableSharedFlow<Long>(extraBufferCapacity = 8)
     override val paymentReceived: SharedFlow<Long> = _paymentReceived
 
+    private val _transactionsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    override val transactionsChanged: SharedFlow<Unit> = _transactionsChanged
+
     private fun emitStatus(msg: String) {
         Log.d(TAG, msg)
         _statusLog.tryEmit(msg)
@@ -366,7 +369,9 @@ class NwcRepository(private val context: Context, private val relayPool: RelayPo
                     amountMsats = tx.amount,
                     feeMsats = tx.feesPaid,
                     createdAt = tx.createdAt,
-                    settledAt = tx.settledAt
+                    settledAt = tx.settledAt,
+                    // NIP-47 leaves settled_at null until the payment settles.
+                    pending = tx.settledAt == null
                 )
             }
         }

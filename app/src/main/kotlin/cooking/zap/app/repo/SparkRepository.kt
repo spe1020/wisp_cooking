@@ -15,6 +15,7 @@ import breez_sdk_spark.ListUnclaimedDepositsRequest
 import breez_sdk_spark.Network
 import breez_sdk_spark.OnchainConfirmationSpeed
 import breez_sdk_spark.PaymentDetails
+import breez_sdk_spark.PaymentStatus
 import breez_sdk_spark.PaymentType
 import breez_sdk_spark.PrepareSendPaymentRequest
 import breez_sdk_spark.ReceivePaymentMethod
@@ -104,6 +105,9 @@ class SparkRepository(
 
     private val _paymentReceived = MutableSharedFlow<Long>(extraBufferCapacity = 8)
     override val paymentReceived: SharedFlow<Long> = _paymentReceived
+
+    private val _transactionsChanged = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    override val transactionsChanged: SharedFlow<Unit> = _transactionsChanged
 
     // Identity pubkey from the SDK's GetInfoResponse — exposed for the
     // Wallet Info expandable in settings. Populated on first balance fetch
@@ -316,24 +320,32 @@ class SparkRepository(
                             is SdkEvent.PaymentSucceeded -> {
                                 emitStatus("Payment succeeded")
                                 refreshBalanceInternal()
+                                _transactionsChanged.tryEmit(Unit)
                                 if (e.payment.paymentType == PaymentType.RECEIVE) {
                                     _paymentReceived.tryEmit(e.payment.amount.toLong() * 1000)
                                 }
                             }
                             is SdkEvent.PaymentFailed -> {
                                 emitStatus("Payment failed")
+                                _transactionsChanged.tryEmit(Unit)
                             }
                             is SdkEvent.PaymentPending -> {
+                                // Incoming on-chain deposits land here as a PENDING
+                                // Payment; refresh so they show as pending immediately.
                                 emitStatus("Payment pending")
+                                refreshBalanceInternal()
+                                _transactionsChanged.tryEmit(Unit)
                             }
                             is SdkEvent.UnclaimedDeposits -> {
                                 emitStatus("Unclaimed deposits: ${e.unclaimedDeposits.size}")
                                 _unclaimedDeposits.value = e.unclaimedDeposits
+                                _transactionsChanged.tryEmit(Unit)
                             }
                             is SdkEvent.ClaimedDeposits -> {
                                 emitStatus("Deposits claimed")
                                 _unclaimedDeposits.value = emptyList()
                                 refreshBalanceInternal()
+                                _transactionsChanged.tryEmit(Unit)
                             }
                             else -> {}
                         }
@@ -530,18 +542,29 @@ class SparkRepository(
                     sortAscending = false
                 ))
                 val transactions = response.payments.map { payment ->
-                    val lightningDetails = payment.details as? PaymentDetails.Lightning
+                    val details = payment.details
+                    val lightningDetails = details as? PaymentDetails.Lightning
+
+                    // On-chain deposits/withdrawals carry just a txid; use it as
+                    // the identifier so dedup and the (future) detail drawer work.
+                    val onchainTxid = when (details) {
+                        is PaymentDetails.Deposit -> details.txId
+                        is PaymentDetails.Withdraw -> details.txId
+                        else -> null
+                    }
 
                     // Prefer bolt11-decoded hash (matches ZapSender records), fall back to HTLC hash, then payment ID
                     val decoded = lightningDetails?.invoice?.let {
                         cooking.zap.app.nostr.Bolt11.decode(it)
                     }
                     val htlcHash = lightningDetails?.htlcDetails?.paymentHash?.lowercase()
-                    val paymentHash = decoded?.paymentHash ?: htlcHash ?: payment.id
+                    val paymentHash = onchainTxid ?: decoded?.paymentHash ?: htlcHash ?: payment.id
                     // Prefer Spark's description, fall back to bolt11 description
                     // (bolt11 tag 13 may contain the kind 9734 zap request JSON)
                     val description = lightningDetails?.description
                         ?: decoded?.description
+
+                    val isPending = payment.status == PaymentStatus.PENDING
 
                     WalletTransaction(
                         type = when (payment.paymentType) {
@@ -553,7 +576,10 @@ class SparkRepository(
                         amountMsats = payment.amount.toLong() * 1000,
                         feeMsats = payment.fees.toLong() * 1000,
                         createdAt = payment.timestamp.toLong(),
-                        settledAt = payment.timestamp.toLong()
+                        // Unconfirmed/unsettled payments have no settle time yet.
+                        settledAt = if (payment.status == PaymentStatus.COMPLETED) payment.timestamp.toLong() else null,
+                        pending = isPending,
+                        isOnchain = onchainTxid != null
                     )
                 }
                 Result.success(transactions)

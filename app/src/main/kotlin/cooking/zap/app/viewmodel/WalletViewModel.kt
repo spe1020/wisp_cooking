@@ -423,6 +423,16 @@ class WalletViewModel(
             }
         }
 
+        // Reload the transaction list when a payment goes pending/settles or a
+        // deposit is claimed, so e.g. an incoming on-chain deposit shows as
+        // pending immediately rather than only after a manual refresh.
+        viewModelScope.launch {
+            sparkRepo.transactionsChanged.collect { refreshTransactionsQuietly() }
+        }
+        viewModelScope.launch {
+            nwcRepo.transactionsChanged.collect { refreshTransactionsQuietly() }
+        }
+
         // Auto-fetch lightning address when Spark connected
         if (mode == WalletMode.SPARK && sparkRepo.hasMnemonic()) {
             viewModelScope.launch {
@@ -1457,6 +1467,23 @@ class WalletViewModel(
     }
 
     // --- Transactions ---
+
+    /**
+     * Re-list transactions without toggling the loading spinner or resetting
+     * paging — used for live updates (pending → settled, claimed deposits).
+     */
+    private fun refreshTransactionsQuietly() {
+        viewModelScope.launch {
+            val mapped = withContext(Dispatchers.IO) {
+                val zapMaps = eventRepo.getZapReceiptCounterparties()
+                activeProvider.listTransactions().map { txs -> enrichTransactions(txs, zapMaps) }
+            }
+            mapped.onSuccess { txs ->
+                _transactions.value = dedupTransactions(txs)
+                requestMissingProfiles(txs)
+            }
+        }
+    }
 
     fun loadTransactions() {
         _isLoading.value = true
