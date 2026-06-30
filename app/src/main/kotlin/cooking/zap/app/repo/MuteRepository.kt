@@ -22,7 +22,12 @@ class MuteRepository(private val context: Context, pubkeyHex: String? = null) {
     private val _mutedThreads = MutableStateFlow<Set<String>>(emptySet())
     val mutedThreads: StateFlow<Set<String>> = _mutedThreads
 
+    // @Volatile: reassigned (not mutated) on mute-list updates and read off the
+    // main thread by background feed ingestion (e.g. OnlyFood's confined collector)
+    // — volatile publishes the new reference cleanly to those reader threads.
+    @Volatile
     private var blockedSet = HashSet<String>()
+    @Volatile
     private var wordSet = HashSet<String>()
     private var threadSet = HashSet<String>()
     private var lastUpdated: Long = 0
