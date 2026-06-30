@@ -162,10 +162,12 @@ class OnlyFoodFeedViewModel : ViewModel() {
         // current mode hasn't reached a genuine EOSE. Started before the initial
         // submit so a connect that lands during the first query is observed.
         observeReconnect()
-        // Confined: reads `loaded` and (via submit) RMWs `activeJob`.
+        // Confined: reads `loaded` and (via submit) RMWs `activeJob`. Capture the
+        // mode once so the ModeState and the Mode handed to submit can't diverge.
         viewModelScope.launch(feedDispatcher) {
-            val st = stateOf(_mode.value)
-            if (!st.loaded) submit(_mode.value, st, Load.INITIAL, since = null, until = null)
+            val mode = _mode.value
+            val st = stateOf(mode)
+            if (!st.loaded) submit(mode, st, Load.INITIAL, since = null, until = null)
         }
     }
 
@@ -179,18 +181,25 @@ class OnlyFoodFeedViewModel : ViewModel() {
         // All `seen`/`ordered`/`placedIds`/`loaded` reads + emit are confined.
         viewModelScope.launch(feedDispatcher) {
             val st = stateOf(mode)
-            // Instant cache swap through the shared compute path — no relay query, no
-            // flush signal. A settled target appends-from-its-cache; a never-loaded one
-            // rebuilds-from-(empty)-seen. Either way, the order matches a live flush.
-            emitCurrentMode()
-            _emptyFollows.value = st.emptyFollows
-            _isPaging.value = false
-            _isRefreshing.value = false
-            if (st.loaded) {
-                _isLoading.value = false
-            } else {
-                submit(mode, st, Load.INITIAL, since = null, until = null)
+            // A rapid re-toggle may have enqueued a LATER block that now owns the UI:
+            // apply the visible-mode side effects (emit + indicator flags) only while
+            // this is still the visible mode, mirroring submit()'s `_mode.value == mode`
+            // gating. Otherwise emitCurrentMode() (which reads _mode.value) would emit
+            // the new mode while the flags below reflect this stale captured one.
+            if (_mode.value == mode) {
+                // Instant cache swap through the shared compute path — no relay query, no
+                // flush signal. A settled target appends-from-its-cache; a never-loaded one
+                // rebuilds-from-(empty)-seen. Either way, the order matches a live flush.
+                emitCurrentMode()
+                _emptyFollows.value = st.emptyFollows
+                _isPaging.value = false
+                _isRefreshing.value = false
+                if (st.loaded) _isLoading.value = false
             }
+            // Kick the query for a never-loaded mode regardless of visibility so the
+            // per-mode cache fills in the background and a toggle-back is instant;
+            // submit() is itself `_mode.value == mode`-gated for its indicators/emit.
+            if (!st.loaded) submit(mode, st, Load.INITIAL, since = null, until = null)
         }
     }
 
